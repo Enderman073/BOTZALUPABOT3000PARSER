@@ -1,1 +1,1 @@
-https://raw.githubusercontent.com/sevcator/5ubscrpt10n/main/protocols/vl.txt
+https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/refs/heads/main/all_extracted_configs.txt
