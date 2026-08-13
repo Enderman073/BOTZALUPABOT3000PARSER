@@ -37,7 +37,6 @@ def fetch_keys_from_url(url):
         return []
 
 def parse_proxy_url(url):
-    """Универсальный парсер для VLESS, Hysteria2 и Trojan."""
     try:
         parsed = urllib.parse.urlparse(url)
         proto = parsed.scheme.lower()
@@ -76,11 +75,10 @@ def parse_proxy_url(url):
 # ==========================================
 
 def verify_proxy(item):
-    """Быстрая проверка доступности порта/TLS."""
     host, port = item['host'], item['port']
     
     try:
-        socket.setdefaulttimeout(1.5) 
+        socket.setdefaulttimeout(2.5) 
         ip = socket.gethostbyname(host)
     except (socket.gaierror, Exception):
         return None
@@ -96,7 +94,7 @@ def verify_proxy(item):
     sni = item.get('sni') or host 
 
     try:
-        with socket.create_connection((ip, port), timeout=1.5) as sock:
+        with socket.create_connection((ip, port), timeout=2.5) as sock:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             
             if security == 'tls':
@@ -251,10 +249,9 @@ def test_xray_traffic(item, local_port):
         if not wait_for_socks_port(local_port, timeout=2.5):
             return None
 
-        # socks5h:// форсит резолвинг DNS через SOCKS-прокси
         proxies = {
-            "http": f"socks5h://127.0.0.1:{local_port}",
-            "https": f"socks5h://127.0.0.1:{local_port}"
+            "http": f"socks5://127.0.0.1:{local_port}",
+            "https": f"socks5://127.0.0.1:{local_port}"
         }
 
         ping_start = time.time()
@@ -436,19 +433,7 @@ def generate_clash_config(proxies_list, output_file="clash.yaml"):
             yaml.dump(clash_config, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
         print(f"✅ Clash конфиг сохранен в '{output_file}'")
     except ImportError:
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write("port: 7890\nsocks-port: 7891\nallow-lan: false\nmode: rule\nlog-level: info\n\nproxies:\n")
-            for p in clash_proxies:
-                f.write(f"  - name: {p['name']}\n    type: {p['type']}\n    server: {p['server']}\n    port: {p['port']}\n")
-                if 'uuid' in p: f.write(f"    uuid: {p['uuid']}\n")
-                if 'password' in p: f.write(f"    password: {p['password']}\n")
-                if 'network' in p: f.write(f"    network: {p['network']}\n")
-                f.write(f"    udp: true\n\n")
-            f.write("proxy-groups:\n  - name: Proxy\n    type: select\n    proxies:\n      - DIRECT\n")
-            for p in clash_proxies:
-                f.write(f"      - {p['name']}\n")
-            f.write("\nrules:\n  - MATCH,Proxy\n")
-        print(f"✅ Clash конфиг (без PyYAML) сохранен в '{output_file}'")
+        pass
 
 # ==========================================
 # 5. ОСНОВНОЙ ПАЙПЛАЙН
@@ -489,10 +474,7 @@ def main():
     parsed_items = [group[0] for group in host_port_groups.values()]
     print(f"🔍 Собрано уникальных ключей: {len(parsed_items_raw)}. Серверов: {len(parsed_items)}")
 
-    # ----------------------------------------------------
-    # ЭТАП 1: Предварительная фильтрация TCP/TLS
-    # ----------------------------------------------------
-    print("\n⚡ ЭТАП 1: Предварительная фильтрация серверов...")
+    print("\n⚡ ЭТАП 1: Предварительная фильтрация серверов (TCP/TLS)...")
     alive_first_proxies = []
     total_fast = len(parsed_items)
     completed_fast = 0
@@ -521,19 +503,14 @@ def main():
     if not alive_proxies:
         return
 
-    # ----------------------------------------------------
-    # ЭТАП 2: Полное тестирование скорости через Xray (Без искусственных срезов)
-    # ----------------------------------------------------
-    alive_proxies = sorted(alive_proxies, key=lambda x: x.get('tcp_ping', 9999))
-
-    print(f"\n🚀 ЭТАП 2: Полное тестирование скорости и стран через Xray ({len(alive_proxies)} шт.)...")
+    print("\n🚀 ЭТАП 2: Полное тестирование скорости и стран через Xray...")
     final_working_proxies = []
     xray_tasks = [(p, 10800 + (i % 5000)) for i, p in enumerate(alive_proxies)]
     total_tasks = len(xray_tasks)
     completed = 0
     last_log_time = time.time()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=40) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=60) as executor:
         futures = {executor.submit(test_xray_traffic, arg[0], arg[1]): arg for arg in xray_tasks}
         for future in concurrent.futures.as_completed(futures):
             completed += 1
@@ -551,10 +528,7 @@ def main():
         print("❌ Нет рабочих прокси после глубокого тестирования.")
         return
 
-    # ----------------------------------------------------
-    # СОХРАНЕНИЕ И ГЕНЕРАЦИЯ
-    # ----------------------------------------------------
-    print("\n💾 Сохранение результатов...")
+    # СОХРАНЕНИЕ И АВТОМАТИЧЕСКАЯ ГЕНЕРАЦИЯ
     grouped = defaultdict(list)
     for p in final_working_proxies:
         grouped[p['country']].append(p)
@@ -585,9 +559,9 @@ def main():
                 f.write(f"{renamed_key}\n")
                 saved_count += 1
 
-    print(f"✅ Сохранено {saved_count} качественных ключей (>= {MIN_SPEED} Мбит/с) в '{out_file}'")
+    print(f"\n💾 Успешно сохранено {saved_count} прокси (>= {MIN_SPEED} Мбит/с) в '{out_file}'")
 
-    # Генерация Base64 подписки
+    # Автоматическая подписка
     try:
         with open(out_file, "r", encoding="utf-8") as f:
             valid_links = [line.strip() for line in f if line.strip() and not line.startswith('#')]
@@ -595,11 +569,11 @@ def main():
             encoded_bytes = base64.b64encode("\n".join(valid_links).encode("utf-8"))
             with open("sub.txt", "w", encoding="utf-8") as f:
                 f.write(encoded_bytes.decode("utf-8"))
-            print("✅ Подписка сохранена в 'sub.txt'")
+            print("✅ Подписка автоматически сохранена в 'sub.txt'")
     except Exception as e:
         print(f"❌ Ошибка при создании подписки: {e}")
 
-    # Генерация Clash конфига
+    # Автоматический Clash
     clash_proxies = [p for p in final_working_proxies if p.get('speed', 0) >= MIN_SPEED]
     if clash_proxies:
         generate_clash_config(clash_proxies, "clash.yaml")
