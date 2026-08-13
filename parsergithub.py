@@ -80,7 +80,7 @@ def verify_proxy(item):
     host, port = item['host'], item['port']
     
     try:
-        socket.setdefaulttimeout(2.5) 
+        socket.setdefaulttimeout(1.5) 
         ip = socket.gethostbyname(host)
     except (socket.gaierror, Exception):
         return None
@@ -96,7 +96,7 @@ def verify_proxy(item):
     sni = item.get('sni') or host 
 
     try:
-        with socket.create_connection((ip, port), timeout=2.5) as sock:
+        with socket.create_connection((ip, port), timeout=1.5) as sock:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             
             if security == 'tls':
@@ -251,9 +251,10 @@ def test_xray_traffic(item, local_port):
         if not wait_for_socks_port(local_port, timeout=2.5):
             return None
 
+        # socks5h:// форсит резолвинг DNS через SOCKS-прокси
         proxies = {
-            "http": f"socks5://127.0.0.1:{local_port}",
-            "https": f"socks5://127.0.0.1:{local_port}"
+            "http": f"socks5h://127.0.0.1:{local_port}",
+            "https": f"socks5h://127.0.0.1:{local_port}"
         }
 
         ping_start = time.time()
@@ -458,7 +459,6 @@ def main():
         print(f"❌ Файл ядра '{XRAY_BIN}' не найден!")
         sys.exit(1)
 
-    # Выдаем права на исполнение бинарника Xray под Linux
     os.chmod(XRAY_BIN, 0o755)
 
     if not os.path.exists(LINKS_FILE):
@@ -522,16 +522,18 @@ def main():
         return
 
     # ----------------------------------------------------
-    # ЭТАП 2: Тестирование скорости через Xray
+    # ЭТАП 2: Полное тестирование скорости через Xray (Без искусственных срезов)
     # ----------------------------------------------------
-    print("\n🚀 ЭТАП 2: Тестирование скорости и стран через Xray...")
+    alive_proxies = sorted(alive_proxies, key=lambda x: x.get('tcp_ping', 9999))
+
+    print(f"\n🚀 ЭТАП 2: Полное тестирование скорости и стран через Xray ({len(alive_proxies)} шт.)...")
     final_working_proxies = []
     xray_tasks = [(p, 10800 + (i % 5000)) for i, p in enumerate(alive_proxies)]
     total_tasks = len(xray_tasks)
     completed = 0
     last_log_time = time.time()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=80) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=40) as executor:
         futures = {executor.submit(test_xray_traffic, arg[0], arg[1]): arg for arg in xray_tasks}
         for future in concurrent.futures.as_completed(futures):
             completed += 1
