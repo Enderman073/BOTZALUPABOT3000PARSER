@@ -71,12 +71,11 @@ def parse_proxy_url(url):
         return None
 
 # ==========================================
-# 2. ПЕРВИЧНАЯ ПРОВЕРКА (FAST CHECK)
+# 2. ПЕРВИЧНАЯ ПРОВЕРКА (FAST TCP/TLS)
 # ==========================================
 
 def verify_proxy(item):
     host, port = item['host'], item['port']
-    
     try:
         socket.setdefaulttimeout(2.5) 
         ip = socket.gethostbyname(host)
@@ -96,23 +95,20 @@ def verify_proxy(item):
     try:
         with socket.create_connection((ip, port), timeout=2.5) as sock:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            
             if security == 'tls':
                 context = ssl.create_default_context()
                 context.check_hostname = False
                 context.verify_mode = ssl.CERT_NONE
-                
                 with context.wrap_socket(sock, server_hostname=sni) as ssock:
                     pass 
 
         item['tcp_ping'] = round((time.time() - start_time) * 1000)
         return item
-
     except (socket.timeout, ConnectionRefusedError, ssl.SSLError, OSError, Exception):
         return None
 
 # ==========================================
-# 3. ГЕНЕРАЦИЯ XRAY КОНФИГА И ТЕСТИРОВАНИЕ
+# 3. ГЕНЕРАЦИЯ XRAY КОНФИГА
 # ==========================================
 
 def build_xray_config(item, local_port):
@@ -170,32 +166,17 @@ def build_xray_config(item, local_port):
 
         outbound = {
             "protocol": "trojan",
-            "settings": {
-                "servers": [{
-                    "address": host,
-                    "port": port,
-                    "password": password
-                }]
-            },
+            "settings": {"servers": [{"address": host, "port": port, "password": password}]},
             "streamSettings": {
                 "network": network,
                 "security": "tls",
-                "tlsSettings": {
-                    "serverName": sni,
-                    "allowInsecure": item['insecure']
-                }
+                "tlsSettings": {"serverName": sni, "allowInsecure": item['insecure']}
             }
         }
-        
         if network == "ws":
-            outbound["streamSettings"]["wsSettings"] = {
-                "path": qs.get('path', ['/'])[0],
-                "headers": {"Host": qs.get('host', [sni])[0]}
-            }
+            outbound["streamSettings"]["wsSettings"] = {"path": qs.get('path', ['/'])[0], "headers": {"Host": qs.get('host', [sni])[0]}}
         elif network == "grpc":
-            outbound["streamSettings"]["grpcSettings"] = {
-                "serviceName": qs.get('serviceName', [''])[0]
-            }
+            outbound["streamSettings"]["grpcSettings"] = {"serviceName": qs.get('serviceName', [''])[0]}
 
         config["outbounds"].append(outbound)
 
@@ -203,37 +184,31 @@ def build_xray_config(item, local_port):
         password = urllib.parse.unquote(parsed.username or '')
         outbound = {
             "protocol": "hysteria2",
-            "settings": {
-                "servers": [{
-                    "address": host,
-                    "port": port,
-                    "password": password
-                }]
-            },
+            "settings": {"servers": [{"address": host, "port": port, "password": password}]},
             "streamSettings": {
                 "network": "udp",
                 "security": "tls",
-                "tlsSettings": {
-                    "serverName": item['sni'],
-                    "allowInsecure": item['insecure']
-                }
+                "tlsSettings": {"serverName": item['sni'], "allowInsecure": item['insecure']}
             }
         }
         config["outbounds"].append(outbound)
 
     return config
 
-def wait_for_socks_port(port, timeout=2.0):
+def wait_for_socks_port(port, timeout=1.5):
     start = time.time()
     while time.time() - start < timeout:
         try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+            with socket.create_connection(("127.0.0.1", port), timeout=0.15):
                 return True
         except OSError:
-            time.sleep(0.05)
+            time.sleep(0.03)
     return False
 
-def test_xray_traffic(item, local_port):
+# ----------------------------------------------------
+# ОПТИМИЗАЦИЯ 1: Быстрый тест работоспособности (204)
+# ----------------------------------------------------
+def check_xray_alive(item, local_port):
     config_data = build_xray_config(item, local_port)
     if not config_data:
         return None
@@ -245,38 +220,64 @@ def test_xray_traffic(item, local_port):
     xray_proc = None
     try:
         xray_proc = subprocess.Popen([XRAY_BIN, "-c", config_filename], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        if not wait_for_socks_port(local_port, timeout=2.5):
+        if not wait_for_socks_port(local_port, timeout=1.5):
             return None
 
-        proxies = {
-            "http": f"socks5://127.0.0.1:{local_port}",
-            "https": f"socks5://127.0.0.1:{local_port}"
-        }
+        proxies = {"http": f"socks5://127.0.0.1:{local_port}", "https": f"socks5://127.0.0.1:{local_port}"}
 
         ping_start = time.time()
-        with requests.get("http://gstatic.com/generate_204", proxies=proxies, timeout=6) as ping_res:
+        with requests.get("http://gstatic.com/generate_204", proxies=proxies, timeout=3.0) as ping_res:
             if ping_res.status_code != 204:
                 return None
-        http_ping = round((time.time() - ping_start) * 1000)
+        
+        item['http_ping'] = round((time.time() - ping_start) * 1000)
+        return item
+    except Exception:
+        return None
+    finally:
+        if xray_proc:
+            xray_proc.terminate()
+            xray_proc.wait()
+        if os.path.exists(config_filename):
+            try: os.remove(config_filename)
+            except OSError: pass
+
+# ----------------------------------------------------
+# ОПТИМИЗАЦИЯ 2: Замер скорости и GeoIP (только живым)
+# ----------------------------------------------------
+def test_xray_speed(item, local_port):
+    config_data = build_xray_config(item, local_port)
+    if not config_data:
+        return None
+
+    config_filename = f"temp_cfg_{local_port}.json"
+    with open(config_filename, "w", encoding="utf-8") as f:
+        json.dump(config_data, f)
+
+    xray_proc = None
+    try:
+        xray_proc = subprocess.Popen([XRAY_BIN, "-c", config_filename], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if not wait_for_socks_port(local_port, timeout=1.5):
+            return None
+
+        proxies = {"http": f"socks5://127.0.0.1:{local_port}", "https": f"socks5://127.0.0.1:{local_port}"}
 
         speed_url = "https://speed.cloudflare.com/__down?bytes=2097152"
         download_start = time.time()
         
-        with requests.get(speed_url, proxies=proxies, stream=True, timeout=6) as speed_res:
+        with requests.get(speed_url, proxies=proxies, stream=True, timeout=5) as speed_res:
             speed_res.raise_for_status()
             downloaded_bytes = 0
-            
             for chunk in speed_res.iter_content(chunk_size=16384):
                 if chunk:
                     downloaded_bytes += len(chunk)
-                if (time.time() - download_start) > 3.5:
+                if (time.time() - download_start) > 3.0:
                     break
 
         elapsed = time.time() - download_start
         mbps = (downloaded_bytes * 8) / (elapsed * 1_000_000) if elapsed > 0 else 0.0
 
-        with requests.get("http://ip-api.com/json/?fields=country,countryCode,isp,org,query", proxies=proxies, timeout=5) as geo_res:
+        with requests.get("http://ip-api.com/json/?fields=country,countryCode,isp,org,query", proxies=proxies, timeout=4) as geo_res:
             geo_data = geo_res.json()
             item['real_ip'] = geo_data.get('query', '')
             item['country'] = geo_data.get('country', 'Unknown')
@@ -286,10 +287,8 @@ def test_xray_traffic(item, local_port):
             cdn_keywords = ['cloudflare', 'fastly', 'akamai', 'cloudfront', 'cdn']
             item['is_cdn'] = any(cdn in org_isp for cdn in cdn_keywords)
 
-        item['http_ping'] = http_ping
         item['speed'] = round(mbps, 2)
         return item
-
     except Exception:
         return None
     finally:
@@ -474,6 +473,9 @@ def main():
     parsed_items = [group[0] for group in host_port_groups.values()]
     print(f"🔍 Собрано уникальных ключей: {len(parsed_items_raw)}. Серверов: {len(parsed_items)}")
 
+    # ----------------------------------------------------
+    # ЭТАП 1: Быстрая TCP/TLS проверка
+    # ----------------------------------------------------
     print("\n⚡ ЭТАП 1: Предварительная фильтрация серверов (TCP/TLS)...")
     alive_first_proxies = []
     total_fast = len(parsed_items)
@@ -489,7 +491,7 @@ def main():
                 alive_first_proxies.append(res)
             
             now = time.time()
-            if now - last_log_time >= 5.0 or completed_fast == total_fast:
+            if now - last_log_time >= 4.0 or completed_fast == total_fast:
                 percent = round((completed_fast / total_fast) * 100)
                 print(f"  📊 [Этап 1] Проверено {completed_fast}/{total_fast} ({percent}%) | Найдено живых TCP: {len(alive_first_proxies)}")
                 last_log_time = now
@@ -499,36 +501,70 @@ def main():
     for ident in tcp_alive_hosts:
         alive_proxies.extend(host_port_groups[ident])
 
-    print(f"✅ Допущены к глубокому тестированию: {len(alive_proxies)} ключей")
+    print(f"✅ Допущены к Xray-тесту: {len(alive_proxies)} ключей")
     if not alive_proxies:
         return
 
-    print("\n🚀 ЭТАП 2: Полное тестирование скорости и стран через Xray...")
-    final_working_proxies = []
+    # ----------------------------------------------------
+    # ЭТАП 2: Быстрая проверка валидности протокола через Xray (204)
+    # ----------------------------------------------------
+    print("\n🚀 ЭТАП 2: Быстрая проверка прокси через Xray (HTTP 204)...")
+    alive_xray_proxies = []
     xray_tasks = [(p, 10800 + (i % 5000)) for i, p in enumerate(alive_proxies)]
     total_tasks = len(xray_tasks)
     completed = 0
     last_log_time = time.time()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=60) as executor:
-        futures = {executor.submit(test_xray_traffic, arg[0], arg[1]): arg for arg in xray_tasks}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=80) as executor:
+        futures = {executor.submit(check_xray_alive, arg[0], arg[1]): arg for arg in xray_tasks}
         for future in concurrent.futures.as_completed(futures):
             completed += 1
+            res = future.result()
+            if res:
+                alive_xray_proxies.append(res)
+
+            now = time.time()
+            if now - last_log_time >= 4.0 or completed == total_tasks:
+                percent = round((completed / total_tasks) * 100)
+                print(f"  📊 [Этап 2] Проверено {completed}/{total_tasks} ({percent}%) | Рабочих Xray: {len(alive_xray_proxies)}")
+                last_log_time = now
+
+    print(f"✅ Успешно ответили на 204 запрос: {len(alive_xray_proxies)} из {total_tasks}")
+    if not alive_xray_proxies:
+        print("❌ Нет рабочих прокси после Этапа 2.")
+        return
+
+    # ----------------------------------------------------
+    # ЭТАП 3: Замер скорости и определение стран (Только для реальных прокси!)
+    # ----------------------------------------------------
+    print(f"\n💨 ЭТАП 3: Замер скорости и GeoIP для {len(alive_xray_proxies)} подтвержденных прокси...")
+    final_working_proxies = []
+    speed_tasks = [(p, 16000 + (i % 5000)) for i, p in enumerate(alive_xray_proxies)]
+    total_speed_tasks = len(speed_tasks)
+    completed_speed = 0
+    last_log_time = time.time()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=40) as executor:
+        futures = {executor.submit(test_xray_speed, arg[0], arg[1]): arg for arg in speed_tasks}
+        for future in concurrent.futures.as_completed(futures):
+            completed_speed += 1
             res = future.result()
             if res:
                 final_working_proxies.append(res)
 
             now = time.time()
-            if now - last_log_time >= 5.0 or completed == total_tasks:
-                percent = round((completed / total_tasks) * 100)
-                print(f"  📊 [Этап 2] Проверено {completed}/{total_tasks} ({percent}%) | Рабочих прокси: {len(final_working_proxies)}")
+            if now - last_log_time >= 4.0 or completed_speed == total_speed_tasks:
+                percent = round((completed_speed / total_speed_tasks) * 100)
+                print(f"  📊 [Этап 3] Проверено {completed_speed}/{total_speed_tasks} ({percent}%) | Завершено с замером: {len(final_working_proxies)}")
                 last_log_time = now
 
     if not final_working_proxies:
-        print("❌ Нет рабочих прокси после глубокого тестирования.")
+        print("❌ Не удалось получить скорость/GeoIP.")
         return
 
-    # СОХРАНЕНИЕ И АВТОМАТИЧЕСКАЯ ГЕНЕРАЦИЯ
+    # ----------------------------------------------------
+    # СОХРАНЕНИЕ
+    # ----------------------------------------------------
     grouped = defaultdict(list)
     for p in final_working_proxies:
         grouped[p['country']].append(p)
@@ -561,7 +597,6 @@ def main():
 
     print(f"\n💾 Успешно сохранено {saved_count} прокси (>= {MIN_SPEED} Мбит/с) в '{out_file}'")
 
-    # Автоматическая подписка
     try:
         with open(out_file, "r", encoding="utf-8") as f:
             valid_links = [line.strip() for line in f if line.strip() and not line.startswith('#')]
@@ -573,7 +608,6 @@ def main():
     except Exception as e:
         print(f"❌ Ошибка при создании подписки: {e}")
 
-    # Автоматический Clash
     clash_proxies = [p for p in final_working_proxies if p.get('speed', 0) >= MIN_SPEED]
     if clash_proxies:
         generate_clash_config(clash_proxies, "clash.yaml")
