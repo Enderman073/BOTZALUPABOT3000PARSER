@@ -33,7 +33,7 @@ jobs:
           chmod +x xray
 
       - name: Запуск проверки прокси
-        run: python parsergithub.py
+        run: python -u parsergithub.py
 
       - name: Коммит и Пуш результатов в репозиторий
         run: |
