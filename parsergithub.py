@@ -108,7 +108,7 @@ def verify_proxy(item):
         return None
 
 # ==========================================
-# 3. ГЕНЕРАЦИЯ XRAY КОНФИГА
+# 3. ГЕНЕРАЦИЯ XRAY КОНФИГА И ТЕСТЫ
 # ==========================================
 
 def build_xray_config(item, local_port):
@@ -205,9 +205,6 @@ def wait_for_socks_port(port, timeout=1.5):
             time.sleep(0.03)
     return False
 
-# ----------------------------------------------------
-# ОПТИМИЗАЦИЯ 1: Быстрый тест работоспособности (204)
-# ----------------------------------------------------
 def check_xray_alive(item, local_port):
     config_data = build_xray_config(item, local_port)
     if not config_data:
@@ -242,9 +239,6 @@ def check_xray_alive(item, local_port):
             try: os.remove(config_filename)
             except OSError: pass
 
-# ----------------------------------------------------
-# ОПТИМИЗАЦИЯ 2: Замер скорости и GeoIP (только живым)
-# ----------------------------------------------------
 def test_xray_speed(item, local_port):
     config_data = build_xray_config(item, local_port)
     if not config_data:
@@ -506,7 +500,7 @@ def main():
         return
 
     # ----------------------------------------------------
-    # ЭТАП 2: Быстрая проверка валидности протокола через Xray (204)
+    # ЭТАП 2: Быстрая проверка валидности протокола (204)
     # ----------------------------------------------------
     print("\n🚀 ЭТАП 2: Быстрая проверка прокси через Xray (HTTP 204)...")
     alive_xray_proxies = []
@@ -535,9 +529,9 @@ def main():
         return
 
     # ----------------------------------------------------
-    # ЭТАП 3: Замер скорости и определение стран (Только для реальных прокси!)
+    # ЭТАП 3: Замер скорости и GeoIP
     # ----------------------------------------------------
-    print(f"\n💨 ЭТАП 3: Замер скорости и GeoIP для {len(alive_xray_proxies)} подтвержденных прокси...")
+    print(f"\n💨 ЭТАП 3: Замер скорости и GeoIP для {len(alive_xray_proxies)} прокси...")
     final_working_proxies = []
     speed_tasks = [(p, 16000 + (i % 5000)) for i, p in enumerate(alive_xray_proxies)]
     total_speed_tasks = len(speed_tasks)
@@ -555,7 +549,7 @@ def main():
             now = time.time()
             if now - last_log_time >= 4.0 or completed_speed == total_speed_tasks:
                 percent = round((completed_speed / total_speed_tasks) * 100)
-                print(f"  📊 [Этап 3] Проверено {completed_speed}/{total_speed_tasks} ({percent}%) | Завершено с замером: {len(final_working_proxies)}")
+                print(f"  📊 [Этап 3] Проверено {completed_speed}/{total_speed_tasks} ({percent}%) | Успешно с замером: {len(final_working_proxies)}")
                 last_log_time = now
 
     if not final_working_proxies:
@@ -563,29 +557,90 @@ def main():
         return
 
     # ----------------------------------------------------
-    # СОХРАНЕНИЕ
+    # 6. ЭЛИТНЫЙ ТОП-100 ДЛЯ МОБИЛОК (top100_sub.txt)
     # ----------------------------------------------------
-    grouped = defaultdict(list)
-    for p in final_working_proxies:
-        grouped[p['country']].append(p)
+    MIN_SPEED_TOP = 5.0
+    MAX_PING_TOP = 450
+
+    prime_candidates = [
+        p for p in final_working_proxies 
+        if p.get('speed', 0) >= MIN_SPEED_TOP and p.get('http_ping', 9999) <= MAX_PING_TOP
+    ]
+
+    # Сортировка по Индексу Качества (Баланс скорости и пинга)
+    prime_candidates.sort(
+        key=lambda x: (x['speed'] * 1000 / max(x['http_ping'], 1)), 
+        reverse=True
+    )
+
+    top_100_list = []
+    seen_servers_top = defaultdict(int)
+
+    for p in prime_candidates:
+        server_id = p.get('real_ip') or p.get('host')
+        if seen_servers_top[server_id] < 2:  # Максимум 2 ключа с 1 физического сервера
+            top_100_list.append(p)
+            seen_servers_top[server_id] += 1
+        if len(top_100_list) == 100:
+            break
+
+    if top_100_list:
+        top_links = []
+        for i, p in enumerate(top_100_list, 1):
+            flag = get_flag(p.get('code', ''))
+            safe_country = p['country'].replace(" ", "_")
+            cdn_suffix = "-CDN" if p.get('is_cdn') else ""
+            name = f"🔥{flag}_#{i}_{p['proto'].upper()}_{safe_country}{cdn_suffix}-{p['speed']}Mbps-{p['http_ping']}ms"
+            base_key = p['key'].split('#')[0]
+            top_links.append(f"{base_key}#{urllib.parse.quote(name)}")
+
+        with open("top100.txt", "w", encoding="utf-8") as f:
+            f.write("\n".join(top_links))
+
+        encoded_top = base64.b64encode("\n".join(top_links).encode("utf-8")).decode("utf-8")
+        with open("top100_sub.txt", "w", encoding="utf-8") as f:
+            f.write(encoded_top)
+
+        print(f"\n💎 Отобрано {len(top_100_list)} ЭЛИТНЫХ прокси в 'top100_sub.txt'")
+    else:
+        print("\n⚠️ Не нашлось достаточно быстрых серверов под критерии Элиты (>=5.0 Mbps, <=450 ms).")
+
+    # ----------------------------------------------------
+    # 7. ОСНОВНАЯ ЧИСТАЯ БАЗА (good_proxies.txt / sub.txt)
+    # ----------------------------------------------------
+    MIN_SPEED_ALL = 2.0
+    sorted_all = sorted(final_working_proxies, key=lambda x: x.get('speed', 0), reverse=True)
+    
+    unique_links = set()
+    server_ip_count = defaultdict(int)
+    clean_final_proxies = []
+
+    for p in sorted_all:
+        if p.get('speed', 0) < MIN_SPEED_ALL:
+            continue
+            
+        clean_url = p['key'].split('#')[0]
+        server_id = p.get('real_ip') or p.get('host')
+        
+        # Защита от дублей и клонов (не более 3 ключей на сервер)
+        if clean_url not in unique_links and server_ip_count[server_id] < 3:
+            unique_links.add(clean_url)
+            server_ip_count[server_id] += 1
+            clean_final_proxies.append(p)
 
     out_file = "good_proxies.txt"
-    MIN_SPEED = 2.5  
-    saved_count = 0  
+    grouped = defaultdict(list)
+    for p in clean_final_proxies:
+        grouped[p['country']].append(p)
 
+    saved_count = 0  
     with open(out_file, "w", encoding="utf-8") as f:
         for country in sorted(grouped.keys()):
             sorted_proxies = sorted(grouped[country], key=lambda x: x['speed'], reverse=True)
-            if not any(p.get('speed', 0) >= MIN_SPEED for p in sorted_proxies):
-                continue
-
             flag = get_flag(grouped[country][0]['code'])
             f.write(f"\n# {flag} {country}\n")
 
             for proxy in sorted_proxies:
-                if proxy.get('speed', 0) < MIN_SPEED:
-                    continue
-
                 safe_country = proxy['country'].replace(" ", "_")
                 cdn_suffix = "-CDN" if proxy.get('is_cdn') else ""
                 new_name = f"{flag}_{proxy['proto'].upper()}_{safe_country}{cdn_suffix}-{proxy['http_ping']}ms-{proxy['speed']}Mbps"
@@ -595,7 +650,7 @@ def main():
                 f.write(f"{renamed_key}\n")
                 saved_count += 1
 
-    print(f"\n💾 Успешно сохранено {saved_count} прокси (>= {MIN_SPEED} Мбит/с) в '{out_file}'")
+    print(f"📦 Очищенная база ({saved_count} уникальных ключей) сохранена в '{out_file}'")
 
     try:
         with open(out_file, "r", encoding="utf-8") as f:
@@ -604,13 +659,12 @@ def main():
             encoded_bytes = base64.b64encode("\n".join(valid_links).encode("utf-8"))
             with open("sub.txt", "w", encoding="utf-8") as f:
                 f.write(encoded_bytes.decode("utf-8"))
-            print("✅ Подписка автоматически сохранена в 'sub.txt'")
+            print("✅ Полная подписка сохранена в 'sub.txt'")
     except Exception as e:
         print(f"❌ Ошибка при создании подписки: {e}")
 
-    clash_proxies = [p for p in final_working_proxies if p.get('speed', 0) >= MIN_SPEED]
-    if clash_proxies:
-        generate_clash_config(clash_proxies, "clash.yaml")
+    if clean_final_proxies:
+        generate_clash_config(clean_final_proxies, "clash.yaml")
 
 if __name__ == "__main__":
     main()
