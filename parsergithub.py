@@ -256,6 +256,7 @@ def test_xray_speed(item, local_port):
 
         proxies = {"http": f"socks5://127.0.0.1:{local_port}", "https": f"socks5://127.0.0.1:{local_port}"}
 
+        # 1. Замер скорости
         speed_url = "https://speed.cloudflare.com/__down?bytes=2097152"
         download_start = time.time()
         
@@ -271,6 +272,7 @@ def test_xray_speed(item, local_port):
         elapsed = time.time() - download_start
         mbps = (downloaded_bytes * 8) / (elapsed * 1_000_000) if elapsed > 0 else 0.0
 
+        # 2. GeoIP инфо
         with requests.get("http://ip-api.com/json/?fields=country,countryCode,isp,org,query", proxies=proxies, timeout=4) as geo_res:
             geo_data = geo_res.json()
             item['real_ip'] = geo_data.get('query', '')
@@ -280,6 +282,28 @@ def test_xray_speed(item, local_port):
             org_isp = (geo_data.get('isp', '') + " " + geo_data.get('org', '')).lower()
             cdn_keywords = ['cloudflare', 'fastly', 'akamai', 'cloudfront', 'cdn']
             item['is_cdn'] = any(cdn in org_isp for cdn in cdn_keywords)
+
+        # 3. ТЕСТ TELEGRAM
+        try:
+            with requests.get("https://api.telegram.org", proxies=proxies, timeout=2.5) as tg_res:
+                item['telegram_ok'] = tg_res.status_code in [200, 400, 404]
+        except Exception:
+            item['telegram_ok'] = False
+
+        # 4. ТЕСТ GOOGLE SEARCH (БЕЗ КАПЧИ)
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+            }
+            with requests.get("https://www.google.com/search?q=test", proxies=proxies, headers=headers, timeout=3.0) as g_res:
+                has_captcha = (
+                    "sorry/index" in g_res.url 
+                    or "unusual traffic" in g_res.text.lower() 
+                    or "recaptcha" in g_res.text.lower()
+                )
+                item['google_ok'] = (g_res.status_code == 200) and not has_captcha
+        except Exception:
+            item['google_ok'] = False
 
         item['speed'] = round(mbps, 2)
         return item
@@ -298,6 +322,14 @@ def get_flag(country_code):
         return "🏳️"
     return "".join(chr(ord(c) + 127397) for c in country_code.upper())
 
+def build_emoji_tags(proxy_item):
+    icons = ""
+    if proxy_item.get('telegram_ok'):
+        icons += "✈️"
+    if proxy_item.get('google_ok'):
+        icons += "🔍"
+    return f"{icons} " if icons else ""
+
 # ==========================================
 # 4. ГЕНЕРАЦИЯ CLASH КОНФИГА
 # ==========================================
@@ -305,128 +337,154 @@ def get_flag(country_code):
 def generate_clash_config(proxies_list, output_file="clash.yaml"):
     if not proxies_list:
         return
-    
-    sorted_proxies = sorted(proxies_list, key=lambda x: x['speed'], reverse=True)
+
+    sorted_proxies = sorted(proxies_list, key=lambda x: x.get('speed', 0), reverse=True)
     clash_proxies = []
-    proxy_groups = defaultdict(list)
-    
-    for proxy in sorted_proxies:
-        if proxy.get('speed', 0) < 1.5:
+    proxy_groups_map = defaultdict(list)
+    seen_names = set()
+
+    for i, proxy in enumerate(sorted_proxies, 1):
+        if proxy.get('speed', 0) < 1.0:
             continue
-            
-        name = f"{proxy['proto'].upper()}-{proxy['country']}-{proxy['speed']}Mbps"
-        name = re.sub(r'[^a-zA-Z0-9\-_]', '_', name)
-        
-        if proxy['proto'] == 'vless':
-            clash_proxy = {
-                'name': name,
-                'type': 'vless',
-                'server': proxy['host'],
-                'port': proxy['port'],
-                'uuid': proxy['raw_parsed'].username,
-                'network': proxy['qs'].get('type', ['tcp'])[0],
-                'tls': proxy.get('security') == 'tls' or proxy.get('security') == 'reality',
-                'udp': True,
-                'sni': proxy.get('sni'),
-                'skip-cert-verify': proxy.get('insecure', False)
-            }
-            if proxy.get('security') == 'reality':
-                clash_proxy['reality-opts'] = {
-                    'public-key': proxy['qs'].get('pbk', [''])[0],
-                    'short-id': proxy['qs'].get('sid', [''])[0]
-                }
+
+        flag = get_flag(proxy.get('code', ''))
+        country = proxy.get('country', 'Unknown').replace(" ", "_")
+        emoji_tags = build_emoji_tags(proxy)
+        cdn_suffix = "-CDN" if proxy.get('is_cdn') else ""
+
+        # Уникальное название ноды безлишних символов
+        raw_name = f"{flag} #{i} {emoji_tags}{country}{cdn_suffix} {proxy['speed']}Mbps"
+
+        name = raw_name
+        dup_counter = 1
+        while name in seen_names:
+            name = f"{raw_name}_{dup_counter}"
+            dup_counter += 1
+        seen_names.add(name)
+
+        proto = proxy['proto']
+        host = proxy['host']
+        port = int(proxy['port'])
+        sni = proxy.get('sni') or host
+        qs = proxy.get('qs', {})
+
+        clash_proxy = {
+            'name': name,
+            'type': proto,
+            'server': host,
+            'port': port,
+            'udp': True,
+            'skip-cert-verify': proxy.get('insecure', False)
+        }
+
+        if proto == 'vless':
+            clash_proxy['uuid'] = proxy['raw_parsed'].username
+            clash_proxy['network'] = qs.get('type', ['tcp'])[0]
+            sec = proxy.get('security', 'none')
+
+            if sec in ['tls', 'reality']:
                 clash_proxy['tls'] = True
-            
-            if clash_proxy['network'] == 'ws':
+                clash_proxy['servername'] = sni
+                clash_proxy['client-fingerprint'] = qs.get('fp', ['chrome'])[0]
+
+                if sec == 'reality':
+                    clash_proxy['reality-opts'] = {
+                        'public-key': qs.get('pbk', [''])[0]
+                    }
+                    sid = qs.get('sid', [''])[0]
+                    if sid:
+                        clash_proxy['reality-opts']['short-id'] = sid
+
+            net = clash_proxy['network']
+            if net == 'ws':
                 clash_proxy['ws-opts'] = {
-                    'path': proxy['qs'].get('path', ['/'])[0],
-                    'headers': {'Host': proxy['qs'].get('host', [proxy.get('sni', proxy['host'])])[0]}
+                    'path': qs.get('path', ['/'])[0],
+                    'headers': {'Host': qs.get('host', [sni])[0]}
                 }
-            if clash_proxy['network'] == 'grpc':
+            elif net == 'grpc':
                 clash_proxy['grpc-opts'] = {
-                    'grpc-service-name': proxy['qs'].get('serviceName', [''])[0]
+                    'grpc-service-name': qs.get('serviceName', [''])[0]
                 }
-                
-        elif proxy['proto'] == 'trojan':
-            clash_proxy = {
-                'name': name,
-                'type': 'trojan',
-                'server': proxy['host'],
-                'port': proxy['port'],
-                'password': urllib.parse.unquote(proxy['raw_parsed'].username or ''),
-                'network': proxy['qs'].get('type', ['tcp'])[0],
-                'udp': True,
-                'sni': proxy.get('sni'),
-                'skip-cert-verify': proxy.get('insecure', False)
-            }
-            if clash_proxy['network'] == 'ws':
+
+        elif proto == 'trojan':
+            clash_proxy['password'] = urllib.parse.unquote(proxy['raw_parsed'].username or '')
+            clash_proxy['network'] = qs.get('type', ['tcp'])[0]
+            clash_proxy['sni'] = sni
+
+            net = clash_proxy['network']
+            if net == 'ws':
                 clash_proxy['ws-opts'] = {
-                    'path': proxy['qs'].get('path', ['/'])[0],
-                    'headers': {'Host': proxy['qs'].get('host', [proxy.get('sni', proxy['host'])])[0]}
+                    'path': qs.get('path', ['/'])[0],
+                    'headers': {'Host': qs.get('host', [sni])[0]}
                 }
-            if clash_proxy['network'] == 'grpc':
+            elif net == 'grpc':
                 clash_proxy['grpc-opts'] = {
-                    'grpc-service-name': proxy['qs'].get('serviceName', [''])[0]
+                    'grpc-service-name': qs.get('serviceName', [''])[0]
                 }
-                
-        elif proxy['proto'] == 'hysteria2':
-            clash_proxy = {
-                'name': name,
-                'type': 'hysteria2',
-                'server': proxy['host'],
-                'port': proxy['port'],
-                'password': urllib.parse.unquote(proxy['raw_parsed'].username or ''),
-                'udp': True,
-                'sni': proxy.get('sni'),
-                'skip-cert-verify': proxy.get('insecure', False)
-            }
+
+        elif proto == 'hysteria2':
+            clash_proxy['password'] = urllib.parse.unquote(proxy['raw_parsed'].username or '')
+            clash_proxy['sni'] = sni
+
         else:
             continue
-            
+
         clash_proxies.append(clash_proxy)
-        proxy_groups[proxy['country']].append(name)
-    
+        proxy_groups_map[country].append(name)
+
     if not clash_proxies:
         return
-    
-    proxy_group_list = [{
-        'name': 'Proxy',
-        'type': 'select',
-        'proxies': ['DIRECT'] + [p['name'] for p in clash_proxies]
-    }]
-    
-    for country, proxies in proxy_groups.items():
-        if proxies:
-            proxy_group_list.append({
-                'name': country,
+
+    all_proxy_names = [p['name'] for p in clash_proxies]
+
+    proxy_groups = [
+        {
+            'name': '🚀 PROXY',
+            'type': 'select',
+            'proxies': ['⚡ AUTO'] + all_proxy_names
+        },
+        {
+            'name': '⚡ AUTO',
+            'type': 'url-test',
+            'proxies': all_proxy_names,
+            'url': 'http://gstatic.com/generate_204',
+            'interval': 300,
+            'tolerance': 50
+        }
+    ]
+
+    for country_name, p_names in proxy_groups_map.items():
+        if p_names:
+            proxy_groups.append({
+                'name': f"📍 {country_name}",
                 'type': 'url-test',
-                'proxies': proxies,
+                'proxies': p_names,
                 'url': 'http://gstatic.com/generate_204',
                 'interval': 300
             })
-    
+
+    clash_config = {
+        'port': 7890,
+        'socks-port': 7891,
+        'allow-lan': False,
+        'mode': 'rule',
+        'log-level': 'info',
+        'proxies': clash_proxies,
+        'proxy-groups': proxy_groups,
+        'rules': [
+            'DOMAIN-SUFFIX,local,DIRECT',
+            'GEOIP,private,DIRECT',
+            'MATCH,🚀 PROXY'
+        ]
+    }
+
     try:
         import yaml
-        clash_config = {
-            'port': 7890,
-            'socks-port': 7891,
-            'allow-lan': False,
-            'mode': 'rule',
-            'log-level': 'info',
-            'proxies': clash_proxies,
-            'proxy-groups': proxy_group_list,
-            'rules': [
-                'DOMAIN-SUFFIX,local,DIRECT',
-                'GEOIP,private,DIRECT',
-                'GEOIP,CN,DIRECT',
-                'MATCH,Proxy'
-            ]
-        }
         with open(output_file, 'w', encoding='utf-8') as f:
             yaml.dump(clash_config, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
-        print(f"✅ Clash конфиг сохранен в '{output_file}'")
-    except ImportError:
-        pass
+        print(f"✅ Валидный Clash Meta конфиг сохранен в '{output_file}'")
+    except Exception as e:
+        print(f"❌ Ошибка записи YAML ({output_file}): {e}")
 
 # ==========================================
 # 5. ОСНОВНОЙ ПАЙПЛАЙН
@@ -485,7 +543,7 @@ def main():
                 alive_first_proxies.append(res)
             
             now = time.time()
-            if now - last_log_time >= 4.0 or completed_fast == total_fast:
+            if now - last_log_time >= 10.0 or completed_fast == total_fast:
                 percent = round((completed_fast / total_fast) * 100)
                 print(f"  📊 [Этап 1] Проверено {completed_fast}/{total_fast} ({percent}%) | Найдено живых TCP: {len(alive_first_proxies)}")
                 last_log_time = now
@@ -509,7 +567,7 @@ def main():
     completed = 0
     last_log_time = time.time()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=80) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=90) as executor:
         futures = {executor.submit(check_xray_alive, arg[0], arg[1]): arg for arg in xray_tasks}
         for future in concurrent.futures.as_completed(futures):
             completed += 1
@@ -518,7 +576,7 @@ def main():
                 alive_xray_proxies.append(res)
 
             now = time.time()
-            if now - last_log_time >= 4.0 or completed == total_tasks:
+            if now - last_log_time >= 10.0 or completed == total_tasks:
                 percent = round((completed / total_tasks) * 100)
                 print(f"  📊 [Этап 2] Проверено {completed}/{total_tasks} ({percent}%) | Рабочих Xray: {len(alive_xray_proxies)}")
                 last_log_time = now
@@ -529,16 +587,16 @@ def main():
         return
 
     # ----------------------------------------------------
-    # ЭТАП 3: Замер скорости и GeoIP
+    # ЭТАП 3: Замер скорости, GeoIP, Telegram и Google
     # ----------------------------------------------------
-    print(f"\n💨 ЭТАП 3: Замер скорости и GeoIP для {len(alive_xray_proxies)} прокси...")
+    print(f"\n💨 ЭТАП 3: Замер скорости и проверка сервисов для {len(alive_xray_proxies)} прокси...")
     final_working_proxies = []
     speed_tasks = [(p, 16000 + (i % 5000)) for i, p in enumerate(alive_xray_proxies)]
     total_speed_tasks = len(speed_tasks)
     completed_speed = 0
     last_log_time = time.time()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=40) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
         futures = {executor.submit(test_xray_speed, arg[0], arg[1]): arg for arg in speed_tasks}
         for future in concurrent.futures.as_completed(futures):
             completed_speed += 1
@@ -547,17 +605,17 @@ def main():
                 final_working_proxies.append(res)
 
             now = time.time()
-            if now - last_log_time >= 4.0 or completed_speed == total_speed_tasks:
+            if now - last_log_time >= 10.0 or completed_speed == total_speed_tasks:
                 percent = round((completed_speed / total_speed_tasks) * 100)
                 print(f"  📊 [Этап 3] Проверено {completed_speed}/{total_speed_tasks} ({percent}%) | Успешно с замером: {len(final_working_proxies)}")
                 last_log_time = now
 
     if not final_working_proxies:
-        print("❌ Не удалось получить скорость/GeoIP.")
+        print("❌ Не удалось получить данные по скорости.")
         return
 
     # ----------------------------------------------------
-    # 6. ЭЛИТНЫЙ ТОП-100 ДЛЯ МОБИЛОК (top100_sub.txt)
+    # 6. ЭЛИТНЫЙ ТОП-100 ДЛЯ МОБИЛОК (top100.txt / top100_sub.txt / clash_top100.yaml)
     # ----------------------------------------------------
     MIN_SPEED_TOP = 5.0
     MAX_PING_TOP = 450
@@ -567,7 +625,6 @@ def main():
         if p.get('speed', 0) >= MIN_SPEED_TOP and p.get('http_ping', 9999) <= MAX_PING_TOP
     ]
 
-    # Сортировка по Индексу Качества (Баланс скорости и пинга)
     prime_candidates.sort(
         key=lambda x: (x['speed'] * 1000 / max(x['http_ping'], 1)), 
         reverse=True
@@ -578,7 +635,7 @@ def main():
 
     for p in prime_candidates:
         server_id = p.get('real_ip') or p.get('host')
-        if seen_servers_top[server_id] < 2:  # Максимум 2 ключа с 1 физического сервера
+        if seen_servers_top[server_id] < 2:
             top_100_list.append(p)
             seen_servers_top[server_id] += 1
         if len(top_100_list) == 100:
@@ -590,7 +647,10 @@ def main():
             flag = get_flag(p.get('code', ''))
             safe_country = p['country'].replace(" ", "_")
             cdn_suffix = "-CDN" if p.get('is_cdn') else ""
-            name = f"🔥{flag}_#{i}_{p['proto'].upper()}_{safe_country}{cdn_suffix}-{p['speed']}Mbps-{p['http_ping']}ms"
+            emoji_tags = build_emoji_tags(p)
+            
+            # 🔥🇩🇪 #1 ✈️🔍 Germany-CDN 12.5Mbps
+            name = f"🔥{flag} #{i} {emoji_tags}{safe_country}{cdn_suffix} {p['speed']}Mbps"
             base_key = p['key'].split('#')[0]
             top_links.append(f"{base_key}#{urllib.parse.quote(name)}")
 
@@ -601,12 +661,13 @@ def main():
         with open("top100_sub.txt", "w", encoding="utf-8") as f:
             f.write(encoded_top)
 
-        print(f"\n💎 Отобрано {len(top_100_list)} ЭЛИТНЫХ прокси в 'top100_sub.txt'")
-    else:
-        print("\n⚠️ Не нашлось достаточно быстрых серверов под критерии Элиты (>=5.0 Mbps, <=450 ms).")
+        # Генерация Clash YAML только для Top-100
+        generate_clash_config(top_100_list, "clash_top100.yaml")
+
+        print(f"\n💎 Отобрано {len(top_100_list)} ЭЛИТНЫХ прокси в 'top100_sub.txt' и 'clash_top100.yaml'")
 
     # ----------------------------------------------------
-    # 7. ОСНОВНАЯ ЧИСТАЯ БАЗА (good_proxies.txt / sub.txt)
+    # 7. ОСНОВНАЯ ЧИСТАЯ БАЗА (good_proxies.txt / sub.txt / clash.yaml)
     # ----------------------------------------------------
     MIN_SPEED_ALL = 2.0
     sorted_all = sorted(final_working_proxies, key=lambda x: x.get('speed', 0), reverse=True)
@@ -622,7 +683,6 @@ def main():
         clean_url = p['key'].split('#')[0]
         server_id = p.get('real_ip') or p.get('host')
         
-        # Защита от дублей и клонов (не более 3 ключей на сервер)
         if clean_url not in unique_links and server_ip_count[server_id] < 3:
             unique_links.add(clean_url)
             server_ip_count[server_id] += 1
@@ -643,7 +703,10 @@ def main():
             for proxy in sorted_proxies:
                 safe_country = proxy['country'].replace(" ", "_")
                 cdn_suffix = "-CDN" if proxy.get('is_cdn') else ""
-                new_name = f"{flag}_{proxy['proto'].upper()}_{safe_country}{cdn_suffix}-{proxy['http_ping']}ms-{proxy['speed']}Mbps"
+                emoji_tags = build_emoji_tags(proxy)
+                
+                # 🇩🇪 ✈️🔍 Germany-CDN 12.5Mbps
+                new_name = f"{flag} {emoji_tags}{safe_country}{cdn_suffix} {proxy['speed']}Mbps"
                 base_key = proxy['key'].split('#')[0]
                 renamed_key = f"{base_key}#{urllib.parse.quote(new_name)}"
                 
