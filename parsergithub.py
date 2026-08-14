@@ -30,7 +30,14 @@ def fetch_keys_from_url(url):
         headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"}
         with requests.get(url, headers=headers, timeout=10) as response:
             response.raise_for_status()
-            keys = re.findall(r"(?:vless|hysteria2|hy2|trojan)://[^\s\"'<>]+", response.text)
+            
+            # Защита: если сервер отдал HTML-страницу ошибки (например, 503 Varnish / Cloudflare)
+            text = response.text
+            if "<html" in text.lower() or "<!doctype" in text.lower():
+                print(f" ⚠️ Источник {url} вернул HTML-страницу ошибки вместо ключей (пропущен)")
+                return []
+
+            keys = re.findall(r"(?:vless|hysteria2|hy2|trojan)://[^\s\"'<>]+", text)
             return keys
     except Exception as e:
         print(f" ❌ Ошибка скачивания {url}: {e}")
@@ -331,7 +338,7 @@ def build_emoji_tags(proxy_item):
     return f"{icons} " if icons else ""
 
 # ==========================================
-# 4. ГЕНЕРАЦИЯ CLASH КОНФИГА
+# 4. СТРОГАЯ СБОРКА CLASH META (БЕЗ ОШИБОК YAML)
 # ==========================================
 
 def generate_clash_config(proxies_list, output_file="clash.yaml"):
@@ -352,9 +359,7 @@ def generate_clash_config(proxies_list, output_file="clash.yaml"):
         emoji_tags = build_emoji_tags(proxy)
         cdn_suffix = "-CDN" if proxy.get('is_cdn') else ""
 
-        # Уникальное название ноды безлишних символов
         raw_name = f"{flag} #{i} {emoji_tags}{country}{cdn_suffix} {proxy['speed']}Mbps"
-
         name = raw_name
         dup_counter = 1
         while name in seen_names:
@@ -368,7 +373,7 @@ def generate_clash_config(proxies_list, output_file="clash.yaml"):
         sni = proxy.get('sni') or host
         qs = proxy.get('qs', {})
 
-        clash_proxy = {
+        p_dict = {
             'name': name,
             'type': proto,
             'server': host,
@@ -378,110 +383,153 @@ def generate_clash_config(proxies_list, output_file="clash.yaml"):
         }
 
         if proto == 'vless':
-            clash_proxy['uuid'] = proxy['raw_parsed'].username
-            clash_proxy['network'] = qs.get('type', ['tcp'])[0]
+            p_dict['uuid'] = proxy['raw_parsed'].username
+            net = qs.get('type', ['tcp'])[0]
+            p_dict['network'] = net
             sec = proxy.get('security', 'none')
 
             if sec in ['tls', 'reality']:
-                clash_proxy['tls'] = True
-                clash_proxy['servername'] = sni
-                clash_proxy['client-fingerprint'] = qs.get('fp', ['chrome'])[0]
+                p_dict['tls'] = True
+                p_dict['servername'] = sni
+                p_dict['client-fingerprint'] = qs.get('fp', ['chrome'])[0]
 
                 if sec == 'reality':
-                    clash_proxy['reality-opts'] = {
-                        'public-key': qs.get('pbk', [''])[0]
-                    }
+                    pbk = qs.get('pbk', [''])[0]
                     sid = qs.get('sid', [''])[0]
+                    p_dict['reality-opts'] = {'public-key': pbk}
                     if sid:
-                        clash_proxy['reality-opts']['short-id'] = sid
+                        p_dict['reality-opts']['short-id'] = sid
 
-            net = clash_proxy['network']
             if net == 'ws':
-                clash_proxy['ws-opts'] = {
+                p_dict['ws-opts'] = {
                     'path': qs.get('path', ['/'])[0],
                     'headers': {'Host': qs.get('host', [sni])[0]}
                 }
             elif net == 'grpc':
-                clash_proxy['grpc-opts'] = {
+                p_dict['grpc-opts'] = {
                     'grpc-service-name': qs.get('serviceName', [''])[0]
                 }
 
         elif proto == 'trojan':
-            clash_proxy['password'] = urllib.parse.unquote(proxy['raw_parsed'].username or '')
-            clash_proxy['network'] = qs.get('type', ['tcp'])[0]
-            clash_proxy['sni'] = sni
+            p_dict['password'] = urllib.parse.unquote(proxy['raw_parsed'].username or '')
+            net = qs.get('type', ['tcp'])[0]
+            p_dict['network'] = net
+            p_dict['sni'] = sni
 
-            net = clash_proxy['network']
             if net == 'ws':
-                clash_proxy['ws-opts'] = {
+                p_dict['ws-opts'] = {
                     'path': qs.get('path', ['/'])[0],
                     'headers': {'Host': qs.get('host', [sni])[0]}
                 }
             elif net == 'grpc':
-                clash_proxy['grpc-opts'] = {
+                p_dict['grpc-opts'] = {
                     'grpc-service-name': qs.get('serviceName', [''])[0]
                 }
 
         elif proto == 'hysteria2':
-            clash_proxy['password'] = urllib.parse.unquote(proxy['raw_parsed'].username or '')
-            clash_proxy['sni'] = sni
+            p_dict['password'] = urllib.parse.unquote(proxy['raw_parsed'].username or '')
+            p_dict['sni'] = sni
 
         else:
             continue
 
-        clash_proxies.append(clash_proxy)
+        clash_proxies.append(p_dict)
         proxy_groups_map[country].append(name)
 
     if not clash_proxies:
         return
 
-    all_proxy_names = [p['name'] for p in clash_proxies]
+    # Вспомогательная функция безопасного кавычевания через json.dumps
+    def esc(val):
+        return json.dumps(str(val), ensure_ascii=False)
 
-    proxy_groups = [
-        {
-            'name': '🚀 PROXY',
-            'type': 'select',
-            'proxies': ['⚡ AUTO'] + all_proxy_names
-        },
-        {
-            'name': '⚡ AUTO',
-            'type': 'url-test',
-            'proxies': all_proxy_names,
-            'url': 'http://gstatic.com/generate_204',
-            'interval': 300,
-            'tolerance': 50
-        }
+    lines = [
+        "mixed-port: 7890",
+        "allow-lan: false",
+        "mode: rule",
+        "log-level: info",
+        "",
+        "proxies:"
     ]
+
+    for p in clash_proxies:
+        lines.append(f"  - name: {esc(p['name'])}")
+        lines.append(f"    type: {p['type']}")
+        lines.append(f"    server: {esc(p['server'])}")
+        lines.append(f"    port: {p['port']}")
+        lines.append(f"    udp: {'true' if p.get('udp') else 'false'}")
+        lines.append(f"    skip-cert-verify: {'true' if p.get('skip-cert-verify') else 'false'}")
+
+        if 'uuid' in p:
+            lines.append(f"    uuid: {esc(p['uuid'])}")
+        if 'password' in p:
+            lines.append(f"    password: {esc(p['password'])}")
+        if p.get('tls'):
+            lines.append("    tls: true")
+        if 'servername' in p:
+            lines.append(f"    servername: {esc(p['servername'])}")
+        if 'sni' in p:
+            lines.append(f"    sni: {esc(p['sni'])}")
+        if 'client-fingerprint' in p:
+            lines.append(f"    client-fingerprint: {esc(p['client-fingerprint'])}")
+        if 'network' in p:
+            lines.append(f"    network: {esc(p['network'])}")
+
+        if 'reality-opts' in p:
+            lines.append("    reality-opts:")
+            lines.append(f"      public-key: {esc(p['reality-opts']['public-key'])}")
+            if 'short-id' in p['reality-opts']:
+                lines.append(f"      short-id: {esc(p['reality-opts']['short-id'])}")
+
+        if 'ws-opts' in p:
+            lines.append("    ws-opts:")
+            lines.append(f"      path: {esc(p['ws-opts']['path'])}")
+            lines.append("      headers:")
+            lines.append(f"        Host: {esc(p['ws-opts']['headers']['Host'])}")
+
+        if 'grpc-opts' in p:
+            lines.append("    grpc-opts:")
+            lines.append(f"      grpc-service-name: {esc(p['grpc-opts']['grpc-service-name'])}")
+
+    lines.append("")
+    lines.append("proxy-groups:")
+    all_names = [p['name'] for p in clash_proxies]
+
+    lines.append('  - name: "🚀 PROXY"')
+    lines.append("    type: select")
+    lines.append("    proxies:")
+    lines.append('      - "⚡ AUTO"')
+    for n in all_names:
+        lines.append(f"      - {esc(n)}")
+
+    lines.append('  - name: "⚡ AUTO"')
+    lines.append("    type: url-test")
+    lines.append('    url: "http://gstatic.com/generate_204"')
+    lines.append("    interval: 300")
+    lines.append("    tolerance: 50")
+    lines.append("    proxies:")
+    for n in all_names:
+        lines.append(f"      - {esc(n)}")
 
     for country_name, p_names in proxy_groups_map.items():
         if p_names:
-            proxy_groups.append({
-                'name': f"📍 {country_name}",
-                'type': 'url-test',
-                'proxies': p_names,
-                'url': 'http://gstatic.com/generate_204',
-                'interval': 300
-            })
+            lines.append(f'  - name: {esc("📍 " + country_name)}')
+            lines.append("    type: url-test")
+            lines.append('    url: "http://gstatic.com/generate_204"')
+            lines.append("    interval: 300")
+            lines.append("    proxies:")
+            for n in p_names:
+                lines.append(f"      - {esc(n)}")
 
-    clash_config = {
-        'port': 7890,
-        'socks-port': 7891,
-        'allow-lan': False,
-        'mode': 'rule',
-        'log-level': 'info',
-        'proxies': clash_proxies,
-        'proxy-groups': proxy_groups,
-        'rules': [
-            'DOMAIN-SUFFIX,local,DIRECT',
-            'GEOIP,private,DIRECT',
-            'MATCH,🚀 PROXY'
-        ]
-    }
+    lines.append("")
+    lines.append("rules:")
+    lines.append("  - DOMAIN-SUFFIX,local,DIRECT")
+    lines.append("  - GEOIP,private,DIRECT")
+    lines.append('  - MATCH,"🚀 PROXY"')
 
     try:
-        import yaml
         with open(output_file, 'w', encoding='utf-8') as f:
-            yaml.dump(clash_config, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+            f.write("\n".join(lines) + "\n")
         print(f"✅ Валидный Clash Meta конфиг сохранен в '{output_file}'")
     except Exception as e:
         print(f"❌ Ошибка записи YAML ({output_file}): {e}")
@@ -567,7 +615,7 @@ def main():
     completed = 0
     last_log_time = time.time()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=90) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=80) as executor:
         futures = {executor.submit(check_xray_alive, arg[0], arg[1]): arg for arg in xray_tasks}
         for future in concurrent.futures.as_completed(futures):
             completed += 1
@@ -596,7 +644,7 @@ def main():
     completed_speed = 0
     last_log_time = time.time()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=40) as executor:
         futures = {executor.submit(test_xray_speed, arg[0], arg[1]): arg for arg in speed_tasks}
         for future in concurrent.futures.as_completed(futures):
             completed_speed += 1
@@ -615,7 +663,7 @@ def main():
         return
 
     # ----------------------------------------------------
-    # 6. ЭЛИТНЫЙ ТОП-100 ДЛЯ МОБИЛОК (top100.txt / top100_sub.txt / clash_top100.yaml)
+    # 6. ЭЛИТНЫЙ ТОП-100 (top100.txt / top100_sub.txt / clash_top100.yaml)
     # ----------------------------------------------------
     MIN_SPEED_TOP = 5.0
     MAX_PING_TOP = 450
@@ -649,7 +697,6 @@ def main():
             cdn_suffix = "-CDN" if p.get('is_cdn') else ""
             emoji_tags = build_emoji_tags(p)
             
-            # 🔥🇩🇪 #1 ✈️🔍 Germany-CDN 12.5Mbps
             name = f"🔥{flag} #{i} {emoji_tags}{safe_country}{cdn_suffix} {p['speed']}Mbps"
             base_key = p['key'].split('#')[0]
             top_links.append(f"{base_key}#{urllib.parse.quote(name)}")
@@ -661,9 +708,7 @@ def main():
         with open("top100_sub.txt", "w", encoding="utf-8") as f:
             f.write(encoded_top)
 
-        # Генерация Clash YAML только для Top-100
         generate_clash_config(top_100_list, "clash_top100.yaml")
-
         print(f"\n💎 Отобрано {len(top_100_list)} ЭЛИТНЫХ прокси в 'top100_sub.txt' и 'clash_top100.yaml'")
 
     # ----------------------------------------------------
@@ -705,7 +750,6 @@ def main():
                 cdn_suffix = "-CDN" if proxy.get('is_cdn') else ""
                 emoji_tags = build_emoji_tags(proxy)
                 
-                # 🇩🇪 ✈️🔍 Germany-CDN 12.5Mbps
                 new_name = f"{flag} {emoji_tags}{safe_country}{cdn_suffix} {proxy['speed']}Mbps"
                 base_key = proxy['key'].split('#')[0]
                 renamed_key = f"{base_key}#{urllib.parse.quote(new_name)}"
