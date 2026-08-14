@@ -31,7 +31,6 @@ def fetch_keys_from_url(url):
         with requests.get(url, headers=headers, timeout=10) as response:
             response.raise_for_status()
             
-            # Защита: если сервер отдал HTML-страницу ошибки (503 Varnish / Cloudflare)
             text = response.text
             if "<html" in text.lower() or "<!doctype" in text.lower():
                 print(f" ⚠️ Источник {url} вернул HTML-страницу ошибки вместо ключей (пропущен)")
@@ -297,7 +296,7 @@ def test_xray_speed(item, local_port):
         except Exception:
             item['telegram_ok'] = False
 
-        # 4. ТЕСТ GOOGLE SEARCH (БЕЗ КАПЧИ)
+        # 4. ТЕСТ GOOGLE SEARCH
         try:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
@@ -338,7 +337,7 @@ def build_emoji_tags(proxy_item):
     return f"{icons} " if icons else ""
 
 # ==========================================
-# 4. ИСПРАВЛЕННАЯ СБОРКА CLASH META
+# 4. ВАЛИДНАЯ СБОРКА CLASH META
 # ==========================================
 
 def generate_clash_config(proxies_list, output_file="clash.yaml"):
@@ -599,7 +598,7 @@ def main():
     if not alive_proxies:
         return
 
-    # ЭТАП 2: Быстрая проверка валидности протокола (204)
+    # ЭТАП 2: Быстрая проверка 204
     print("\n🚀 ЭТАП 2: Быстрая проверка прокси через Xray (HTTP 204)...")
     alive_xray_proxies = []
     xray_tasks = [(p, 10800 + (i % 5000)) for i, p in enumerate(alive_proxies)]
@@ -607,7 +606,7 @@ def main():
     completed = 0
     last_log_time = time.time()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=80) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
         futures = {executor.submit(check_xray_alive, arg[0], arg[1]): arg for arg in xray_tasks}
         for future in concurrent.futures.as_completed(futures):
             completed += 1
@@ -626,7 +625,7 @@ def main():
         print("❌ Нет рабочих прокси после Этапа 2.")
         return
 
-    # ЭТАП 3: Замер скорости, GeoIP, Telegram и Google
+    # ЭТАП 3: Скорость, GeoIP, TG и Google
     print(f"\n💨 ЭТАП 3: Замер скорости и проверка сервисов для {len(alive_xray_proxies)} прокси...")
     final_working_proxies = []
     speed_tasks = [(p, 16000 + (i % 5000)) for i, p in enumerate(alive_xray_proxies)]
@@ -634,7 +633,7 @@ def main():
     completed_speed = 0
     last_log_time = time.time()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=40) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=60) as executor:
         futures = {executor.submit(test_xray_speed, arg[0], arg[1]): arg for arg in speed_tasks}
         for future in concurrent.futures.as_completed(futures):
             completed_speed += 1
@@ -653,10 +652,10 @@ def main():
         return
 
     # ----------------------------------------------------
-    # 6. ТОП-100 (БЕЗ ИЗМЕНЕНИЙ)
+    # 6.1. ТОП-100 (ЭЛИТНЫЕ СЕРВЕРЫ)
     # ----------------------------------------------------
-    MIN_SPEED_TOP = 5.0
-    MAX_PING_TOP = 450
+    MIN_SPEED_TOP = 3.0
+    MAX_PING_TOP = 500
 
     prime_candidates = [
         p for p in final_working_proxies 
@@ -702,7 +701,56 @@ def main():
         print(f"\n💎 Отобрано {len(top_100_list)} ЭЛИТНЫХ прокси в 'top100_sub.txt' и 'clash_top100.yaml'")
 
     # ----------------------------------------------------
-    # 7. ОСНОВНАЯ ЧИСТАЯ БАЗА (good_proxies.txt / sub.txt / clash.yaml)
+    # 6.2. ТОП-500 (РАСШИРЕННЫЙ ТОП)
+    # ----------------------------------------------------
+    MIN_SPEED_500 = 2.5
+    MAX_PING_500 = 700
+
+    candidates_500 = [
+        p for p in final_working_proxies 
+        if p.get('speed', 0) >= MIN_SPEED_500 and p.get('http_ping', 9999) <= MAX_PING_500
+    ]
+
+    candidates_500.sort(
+        key=lambda x: (x['speed'] * 1000 / max(x['http_ping'], 1)), 
+        reverse=True
+    )
+
+    top_500_list = []
+    seen_servers_500 = defaultdict(int)
+
+    for p in candidates_500:
+        server_id = p.get('real_ip') or p.get('host')
+        if seen_servers_500[server_id] < 3:
+            top_500_list.append(p)
+            seen_servers_500[server_id] += 1
+        if len(top_500_list) == 500:
+            break
+
+    if top_500_list:
+        top500_links = []
+        for i, p in enumerate(top_500_list, 1):
+            flag = get_flag(p.get('code', ''))
+            safe_country = p['country'].replace(" ", "_")
+            cdn_suffix = "-CDN" if p.get('is_cdn') else ""
+            emoji_tags = build_emoji_tags(p)
+            
+            name = f"⚡{flag} #{i} {emoji_tags}{safe_country}{cdn_suffix} {p['speed']}Mbps"
+            base_key = p['key'].split('#')[0]
+            top500_links.append(f"{base_key}#{urllib.parse.quote(name)}")
+
+        with open("top500.txt", "w", encoding="utf-8") as f:
+            f.write("\n".join(top500_links))
+
+        encoded_top500 = base64.b64encode("\n".join(top500_links).encode("utf-8")).decode("utf-8")
+        with open("top500_sub.txt", "w", encoding="utf-8") as f:
+            f.write(encoded_top500)
+
+        generate_clash_config(top_500_list, "clash_top500.yaml")
+        print(f"🚀 Отобрано {len(top_500_list)} прокси в 'top500_sub.txt' и 'clash_top500.yaml'")
+
+    # ----------------------------------------------------
+    # 7. ОСНОВНАЯ ЧИСТАЯ БАЗА
     # ----------------------------------------------------
     MIN_SPEED_ALL = 2.0
     sorted_all = sorted(final_working_proxies, key=lambda x: x.get('speed', 0), reverse=True)
