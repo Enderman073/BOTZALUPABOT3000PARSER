@@ -1,0 +1,454 @@
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: info
+
+proxies:
+  - name: "🇺🇸 #1 ✈️ United_States-CDN 50.13Mbps"
+    type: vless
+    server: "172.66.158.115"
+    port: 8880
+    udp: true
+    skip-cert-verify: false
+    uuid: "9adb120c-0cce-4b56-9023-ccf7f1e13536"
+    network: "ws"
+    ws-opts:
+      path: "/pyip=ProxyIP.US.CMLiussss.net"
+      headers:
+        Host: "spring-sunset-81e8.322.workers.dev"
+  - name: "🇺🇸 #2 ✈️ United_States-CDN 36.25Mbps"
+    type: vless
+    server: "141.101.120.73"
+    port: 443
+    udp: true
+    skip-cert-verify: false
+    uuid: "5d8eb33a-2166-4daf-88fe-4be5799c493b"
+    tls: true
+    servername: "noisy-term-e657.airdrop2014aa5168.workers.dev"
+    client-fingerprint: "chrome"
+    network: "ws"
+    ws-opts:
+      path: "/"
+      headers:
+        Host: "noisy-term-e657.airdrop2014aa5168.workers.dev"
+  - name: "🇺🇸 #3 ✈️ United_States-CDN 35.76Mbps"
+    type: vless
+    server: "172.64.80.1"
+    port: 443
+    udp: true
+    skip-cert-verify: false
+    uuid: "5da16620-0386-4da3-a252-12a6380ed1a6"
+    tls: true
+    servername: "server3.pegibol940.workers.dev"
+    client-fingerprint: "chrome"
+    network: "ws"
+    ws-opts:
+      path: "/eyJqdW5rIjoiUHRlMEpuSzRFY1EyeUUwIiwicHJvdG9jb2wiOiJ2bCIsIm1vZGUiOiJwcmVmaXgiLCJwYW5lbElQcyI6WyJbMmEwMjo4OTg6MTQ2OjY0OjpdIiwiWzI2MDI6ZmM1OTpiMDo2NDo6XSIsIlsyNjAyOmZjNTk6MTE6NjQ6Ol0iXX0="
+      headers:
+        Host: "server3.pegibol940.workers.dev"
+  - name: "🇺🇸 #4 ✈️ United_States-CDN 33.28Mbps"
+    type: vless
+    server: "188.114.96.3"
+    port: 2087
+    udp: true
+    skip-cert-verify: false
+    uuid: "756e8f39-04e8-436d-b5c6-905d37d9562c"
+    tls: true
+    servername: "ez-98919a.motoricb.workers.dev"
+    client-fingerprint: "chrome"
+    network: "ws"
+    ws-opts:
+      path: "/eyJqdW5rIjoiR1BxUFhYR0w1TlBLMTRsIiwicHJvdG9jb2wiOiJ2bCIsIm1vZGUiOiJwcm94eWlwIiwicGFuZWxJUHMiOltdfQ"
+      headers:
+        Host: "ez-98919a.motoricb.workers.dev"
+  - name: "🇺🇸 #5 ✈️ United_States-CDN 32.16Mbps"
+    type: vless
+    server: "104.17.28.89"
+    port: 443
+    udp: true
+    skip-cert-verify: false
+    uuid: "1078d418-b4e0-4668-9018-dc90c2042d61"
+    tls: true
+    servername: "workspace.evan00.dpdns.org"
+    client-fingerprint: "chrome"
+    network: "ws"
+    ws-opts:
+      path: "/"
+      headers:
+        Host: "workspace.evan00.dpdns.org"
+  - name: "🇺🇸 #6 ✈️ United_States-CDN 31.54Mbps"
+    type: vless
+    server: "104.17.111.27"
+    port: 8443
+    udp: true
+    skip-cert-verify: false
+    uuid: "7b102311-43fd-4e8f-877e-8090623c101d"
+    tls: true
+    servername: "round-art-52ee.eadfgv.workers.dev"
+    client-fingerprint: "chrome"
+    network: "ws"
+    ws-opts:
+      path: "/"
+      headers:
+        Host: "round-art-52ee.eadfgv.workers.dev"
+  - name: "🇺🇸 #7 ✈️ United_States-CDN 31.2Mbps"
+    type: vless
+    server: "104.26.12.54"
+    port: 2083
+    udp: true
+    skip-cert-verify: false
+    uuid: "fc8a0708-951a-4027-860f-2a154ebc4dd7"
+    tls: true
+    servername: "crimson-king-301d.nexoxnet.workers.dev"
+    client-fingerprint: "ios"
+    network: "ws"
+    ws-opts:
+      path: "/"
+      headers:
+        Host: "crimson-king-301d.nexoxnet.workers.dev"
+  - name: "🇺🇸 #8 ✈️ United_States-CDN 31.13Mbps"
+    type: vless
+    server: "104.21.88.129"
+    port: 8880
+    udp: true
+    skip-cert-verify: false
+    uuid: "70c16ec7-13f7-473b-b97d-06399f1481e3"
+    network: "ws"
+    ws-opts:
+      path: "/pyip=ProxyIP.US.CMLiussss.net"
+      headers:
+        Host: "mute-surf-0003.209.workers.dev"
+  - name: "🇺🇸 #9 ✈️ United_States-CDN 25.18Mbps"
+    type: vless
+    server: "141.101.120.73"
+    port: 443
+    udp: true
+    skip-cert-verify: false
+    uuid: "5d8eb33a-2166-4daf-88fe-4be5799c493b"
+    tls: true
+    servername: "noisy-term-e657.airdrop2014aa5168.workers.dev"
+    client-fingerprint: "chrome"
+    network: "ws"
+    ws-opts:
+      path: "/"
+      headers:
+        Host: "noisy-term-e657.airdrop2014aa5168.workers.dev"
+  - name: "🇺🇸 #10 ✈️🔍 United_States 23.52Mbps"
+    type: vless
+    server: "172.67.202.17"
+    port: 2095
+    udp: true
+    skip-cert-verify: false
+    uuid: "86c50e3a-5b87-49dd-bd20-03c7f2735e40"
+    network: "ws"
+    ws-opts:
+      path: "/"
+      headers:
+        Host: "nmslfangbinxing.pusytroller.gq"
+  - name: "🇺🇸 #11 ✈️ United_States-CDN 23.31Mbps"
+    type: vless
+    server: "141.101.114.8"
+    port: 443
+    udp: true
+    skip-cert-verify: false
+    uuid: "5d8eb33a-2166-4daf-88fe-4be5799c493b"
+    tls: true
+    servername: "noisy-term-e657.airdrop2014aa5168.workers.dev"
+    client-fingerprint: "chrome"
+    network: "ws"
+    ws-opts:
+      path: "/"
+      headers:
+        Host: "noisy-term-e657.airdrop2014aa5168.workers.dev"
+  - name: "🇺🇸 #12 ✈️🔍 United_States 21.83Mbps"
+    type: vless
+    server: "188.114.97.6"
+    port: 2095
+    udp: true
+    skip-cert-verify: false
+    uuid: "86c50e3a-5b87-49dd-bd20-03c7f2735e40"
+    network: "ws"
+    ws-opts:
+      path: "/"
+      headers:
+        Host: "download.pusytroller.gq"
+  - name: "🇺🇸 #13 ✈️ United_States-CDN 21.26Mbps"
+    type: vless
+    server: "104.20.28.74"
+    port: 8880
+    udp: true
+    skip-cert-verify: false
+    uuid: "9adb120c-0cce-4b56-9023-ccf7f1e13536"
+    network: "ws"
+    ws-opts:
+      path: "/pyip=ProxyIP.US.CMLiussss.net"
+      headers:
+        Host: "spring-sunset-81e8.322.workers.dev"
+  - name: "🇺🇸 #14 ✈️ United_States-CDN 20.25Mbps"
+    type: vless
+    server: "8.35.211.43"
+    port: 2053
+    udp: true
+    skip-cert-verify: false
+    uuid: "56e4896e-90a9-4fe0-8480-90d3d68b9928"
+    tls: true
+    servername: "go.iranfree.de5.net"
+    client-fingerprint: "chrome"
+    network: "ws"
+    ws-opts:
+      path: "/"
+      headers:
+        Host: "go.iranfree.de5.net"
+  - name: "🇺🇸 #15 ✈️ United_States-CDN 15.76Mbps"
+    type: vless
+    server: "141.101.114.8"
+    port: 443
+    udp: true
+    skip-cert-verify: false
+    uuid: "5d8eb33a-2166-4daf-88fe-4be5799c493b"
+    tls: true
+    servername: "noisy-term-e657.airdrop2014aa5168.workers.dev"
+    client-fingerprint: "chrome"
+    network: "ws"
+    ws-opts:
+      path: "/"
+      headers:
+        Host: "noisy-term-e657.airdrop2014aa5168.workers.dev"
+  - name: "🇺🇸 #16 ✈️🔍 United_States 13.96Mbps"
+    type: vless
+    server: "70.39.197.9"
+    port: 59216
+    udp: true
+    skip-cert-verify: false
+    uuid: "0bcec952-a452-43ed-9468-4547b9f5dfc4"
+    network: "tcp"
+  - name: "🇺🇸 #17 ✈️ United_States-CDN 12.41Mbps"
+    type: vless
+    server: "172.64.94.251"
+    port: 8880
+    udp: true
+    skip-cert-verify: false
+    uuid: "645ea5d2-7d0a-4d66-940d-eefc2b84f4e9"
+    network: "ws"
+    ws-opts:
+      path: "/pyip=ProxyIP.US.CMLiussss.net"
+      headers:
+        Host: "fragrant-surf-4797.496-345.workers.dev"
+  - name: "🇺🇸 #18 ✈️ United_States-CDN 11.52Mbps"
+    type: vless
+    server: "172.64.80.1"
+    port: 443
+    udp: true
+    skip-cert-verify: false
+    uuid: "527451fe-ee1f-4e6f-94ca-808f055f7c9b"
+    tls: true
+    servername: "05a5f9v5a6cm563ieoye7j-8tnpd.hsysyegegrygvvvdujhh.workers.dev"
+    client-fingerprint: "chrome"
+    network: "ws"
+    ws-opts:
+      path: "/vl/ERYN0G44hia16zhR"
+      headers:
+        Host: "05a5f9v5a6cm563ieoye7j-8tnpd.hsysyegegrygvvvdujhh.workers.dev"
+  - name: "🇨🇴 #19 ✈️🔍 Colombia 11.06Mbps"
+    type: vless
+    server: "149.130.189.173"
+    port: 62145
+    udp: true
+    skip-cert-verify: false
+    uuid: "8fb65472-5957-4f64-ba2d-b5812b2f155a"
+    network: "tcp"
+  - name: "🇺🇸 #20 ✈️ United_States-CDN 11.05Mbps"
+    type: vless
+    server: "188.114.97.8"
+    port: 8443
+    udp: true
+    skip-cert-verify: false
+    uuid: "9c63fd59-f9ee-446e-97ec-0bf2de21ed7b"
+    tls: true
+    servername: "dRy-GLITTer-ef10.gFRYubCdrYujVRtH.WorkErS.DEV"
+    client-fingerprint: "chrome"
+    network: "ws"
+    ws-opts:
+      path: "/eyJqdW5rIjoiVVhGU1pOZ1oxaTFUUldyVCIsInByb3RvY29sIjoidmwiLCJtb2RlIjoicHJveHlpcCIsInBhbmVsSVBzIjpbXX0=?ed=2560"
+      headers:
+        Host: "dry-glitter-ef10.gfryubcdryujvrth.workers.dev"
+  - name: "🇨🇴 #21 ✈️🔍 Colombia 11.04Mbps"
+    type: vless
+    server: "149.130.172.133"
+    port: 62145
+    udp: true
+    skip-cert-verify: false
+    uuid: "8fb65472-5957-4f64-ba2d-b5812b2f155a"
+    network: "tcp"
+  - name: "🇮🇹 #22 Italy 10.07Mbps"
+    type: vless
+    server: "204.216.216.23"
+    port: 10086
+    udp: true
+    skip-cert-verify: false
+    uuid: "9f0285ee-20ca-4953-bcdb-86a920652923"
+    network: "raw"
+  - name: "🇺🇸 #23 ✈️ United_States-CDN 9.0Mbps"
+    type: vless
+    server: "104.17.148.22"
+    port: 443
+    udp: true
+    skip-cert-verify: false
+    uuid: "cf0248f7-afaa-49fd-821e-6adc951df1a5"
+    tls: true
+    servername: "BPb-C4AfEfbB.djFvbKjDfV.woRKeRs.dev"
+    client-fingerprint: "chrome"
+    network: "ws"
+    ws-opts:
+      path: "/eyJqdW5rIjoibzdETUxDZXk3RjNkY1BBIiwicHJvdG9jb2wiOiJ2bCIsIm1vZGUiOiJwcm94eWlwIiwicGFuZWxJUHMiOltdfQ=="
+      headers:
+        Host: "bpb-c4afefbb.djfvbkjdfv.workers.dev"
+  - name: "🇺🇸 #24 ✈️ United_States-CDN 7.59Mbps"
+    type: vless
+    server: "104.27.82.154"
+    port: 8880
+    udp: true
+    skip-cert-verify: false
+    uuid: "7ed93ccf-6a54-4b19-a9b4-aedfc79bab7d"
+    network: "ws"
+    ws-opts:
+      path: "/pyip=ProxyIP.KR.CMLiussss.net"
+      headers:
+        Host: "muddy-sky-4767.344-7a7.workers.dev"
+  - name: "🇺🇸 #25 ✈️ United_States-CDN 7.15Mbps"
+    type: vless
+    server: "185.148.107.40"
+    port: 8880
+    udp: true
+    skip-cert-verify: false
+    uuid: "6202b230-417c-4d8e-b624-0f71afa9c75d"
+    network: "ws"
+    ws-opts:
+      path: "/"
+      headers:
+        Host: "vms.lifetime55.workers.dev"
+  - name: "🇺🇸 #26 ✈️ United_States-CDN 6.3Mbps"
+    type: vless
+    server: "172.67.185.178"
+    port: 443
+    udp: true
+    skip-cert-verify: false
+    uuid: "e5cc16a6-ea42-46b2-82ae-ad2157e1641b"
+    tls: true
+    servername: "hhlfy.twiladaphne.ndjp.net"
+    client-fingerprint: "chrome"
+    network: "ws"
+    ws-opts:
+      path: "/"
+      headers:
+        Host: "hhlfy.twiladaphne.ndjp.net"
+
+proxy-groups:
+  - name: "🚀 PROXY"
+    type: select
+    proxies:
+      - "⚡ AUTO"
+      - "🇺🇸 #1 ✈️ United_States-CDN 50.13Mbps"
+      - "🇺🇸 #2 ✈️ United_States-CDN 36.25Mbps"
+      - "🇺🇸 #3 ✈️ United_States-CDN 35.76Mbps"
+      - "🇺🇸 #4 ✈️ United_States-CDN 33.28Mbps"
+      - "🇺🇸 #5 ✈️ United_States-CDN 32.16Mbps"
+      - "🇺🇸 #6 ✈️ United_States-CDN 31.54Mbps"
+      - "🇺🇸 #7 ✈️ United_States-CDN 31.2Mbps"
+      - "🇺🇸 #8 ✈️ United_States-CDN 31.13Mbps"
+      - "🇺🇸 #9 ✈️ United_States-CDN 25.18Mbps"
+      - "🇺🇸 #10 ✈️🔍 United_States 23.52Mbps"
+      - "🇺🇸 #11 ✈️ United_States-CDN 23.31Mbps"
+      - "🇺🇸 #12 ✈️🔍 United_States 21.83Mbps"
+      - "🇺🇸 #13 ✈️ United_States-CDN 21.26Mbps"
+      - "🇺🇸 #14 ✈️ United_States-CDN 20.25Mbps"
+      - "🇺🇸 #15 ✈️ United_States-CDN 15.76Mbps"
+      - "🇺🇸 #16 ✈️🔍 United_States 13.96Mbps"
+      - "🇺🇸 #17 ✈️ United_States-CDN 12.41Mbps"
+      - "🇺🇸 #18 ✈️ United_States-CDN 11.52Mbps"
+      - "🇨🇴 #19 ✈️🔍 Colombia 11.06Mbps"
+      - "🇺🇸 #20 ✈️ United_States-CDN 11.05Mbps"
+      - "🇨🇴 #21 ✈️🔍 Colombia 11.04Mbps"
+      - "🇮🇹 #22 Italy 10.07Mbps"
+      - "🇺🇸 #23 ✈️ United_States-CDN 9.0Mbps"
+      - "🇺🇸 #24 ✈️ United_States-CDN 7.59Mbps"
+      - "🇺🇸 #25 ✈️ United_States-CDN 7.15Mbps"
+      - "🇺🇸 #26 ✈️ United_States-CDN 6.3Mbps"
+  - name: "⚡ AUTO"
+    type: url-test
+    url: "http://gstatic.com/generate_204"
+    interval: 300
+    tolerance: 50
+    proxies:
+      - "🇺🇸 #1 ✈️ United_States-CDN 50.13Mbps"
+      - "🇺🇸 #2 ✈️ United_States-CDN 36.25Mbps"
+      - "🇺🇸 #3 ✈️ United_States-CDN 35.76Mbps"
+      - "🇺🇸 #4 ✈️ United_States-CDN 33.28Mbps"
+      - "🇺🇸 #5 ✈️ United_States-CDN 32.16Mbps"
+      - "🇺🇸 #6 ✈️ United_States-CDN 31.54Mbps"
+      - "🇺🇸 #7 ✈️ United_States-CDN 31.2Mbps"
+      - "🇺🇸 #8 ✈️ United_States-CDN 31.13Mbps"
+      - "🇺🇸 #9 ✈️ United_States-CDN 25.18Mbps"
+      - "🇺🇸 #10 ✈️🔍 United_States 23.52Mbps"
+      - "🇺🇸 #11 ✈️ United_States-CDN 23.31Mbps"
+      - "🇺🇸 #12 ✈️🔍 United_States 21.83Mbps"
+      - "🇺🇸 #13 ✈️ United_States-CDN 21.26Mbps"
+      - "🇺🇸 #14 ✈️ United_States-CDN 20.25Mbps"
+      - "🇺🇸 #15 ✈️ United_States-CDN 15.76Mbps"
+      - "🇺🇸 #16 ✈️🔍 United_States 13.96Mbps"
+      - "🇺🇸 #17 ✈️ United_States-CDN 12.41Mbps"
+      - "🇺🇸 #18 ✈️ United_States-CDN 11.52Mbps"
+      - "🇨🇴 #19 ✈️🔍 Colombia 11.06Mbps"
+      - "🇺🇸 #20 ✈️ United_States-CDN 11.05Mbps"
+      - "🇨🇴 #21 ✈️🔍 Colombia 11.04Mbps"
+      - "🇮🇹 #22 Italy 10.07Mbps"
+      - "🇺🇸 #23 ✈️ United_States-CDN 9.0Mbps"
+      - "🇺🇸 #24 ✈️ United_States-CDN 7.59Mbps"
+      - "🇺🇸 #25 ✈️ United_States-CDN 7.15Mbps"
+      - "🇺🇸 #26 ✈️ United_States-CDN 6.3Mbps"
+  - name: "📍 United_States"
+    type: url-test
+    url: "http://gstatic.com/generate_204"
+    interval: 300
+    proxies:
+      - "🇺🇸 #1 ✈️ United_States-CDN 50.13Mbps"
+      - "🇺🇸 #2 ✈️ United_States-CDN 36.25Mbps"
+      - "🇺🇸 #3 ✈️ United_States-CDN 35.76Mbps"
+      - "🇺🇸 #4 ✈️ United_States-CDN 33.28Mbps"
+      - "🇺🇸 #5 ✈️ United_States-CDN 32.16Mbps"
+      - "🇺🇸 #6 ✈️ United_States-CDN 31.54Mbps"
+      - "🇺🇸 #7 ✈️ United_States-CDN 31.2Mbps"
+      - "🇺🇸 #8 ✈️ United_States-CDN 31.13Mbps"
+      - "🇺🇸 #9 ✈️ United_States-CDN 25.18Mbps"
+      - "🇺🇸 #10 ✈️🔍 United_States 23.52Mbps"
+      - "🇺🇸 #11 ✈️ United_States-CDN 23.31Mbps"
+      - "🇺🇸 #12 ✈️🔍 United_States 21.83Mbps"
+      - "🇺🇸 #13 ✈️ United_States-CDN 21.26Mbps"
+      - "🇺🇸 #14 ✈️ United_States-CDN 20.25Mbps"
+      - "🇺🇸 #15 ✈️ United_States-CDN 15.76Mbps"
+      - "🇺🇸 #16 ✈️🔍 United_States 13.96Mbps"
+      - "🇺🇸 #17 ✈️ United_States-CDN 12.41Mbps"
+      - "🇺🇸 #18 ✈️ United_States-CDN 11.52Mbps"
+      - "🇺🇸 #20 ✈️ United_States-CDN 11.05Mbps"
+      - "🇺🇸 #23 ✈️ United_States-CDN 9.0Mbps"
+      - "🇺🇸 #24 ✈️ United_States-CDN 7.59Mbps"
+      - "🇺🇸 #25 ✈️ United_States-CDN 7.15Mbps"
+      - "🇺🇸 #26 ✈️ United_States-CDN 6.3Mbps"
+  - name: "📍 Colombia"
+    type: url-test
+    url: "http://gstatic.com/generate_204"
+    interval: 300
+    proxies:
+      - "🇨🇴 #19 ✈️🔍 Colombia 11.06Mbps"
+      - "🇨🇴 #21 ✈️🔍 Colombia 11.04Mbps"
+  - name: "📍 Italy"
+    type: url-test
+    url: "http://gstatic.com/generate_204"
+    interval: 300
+    proxies:
+      - "🇮🇹 #22 Italy 10.07Mbps"
+
+rules:
+  - DOMAIN-SUFFIX,local,DIRECT
+  - GEOIP,private,DIRECT
+  - MATCH,🚀 PROXY
