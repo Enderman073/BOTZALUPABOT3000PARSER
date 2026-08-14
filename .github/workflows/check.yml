@@ -3,41 +3,114 @@ name: Proxy Checker Schedule
 on:
   schedule:
     - cron: '0 */4 * * *'  # Запуск каждые 4 часа
-  workflow_dispatch:        # Кнопка ручного запуска
-
-permissions:
-  contents: write           # Права на push обновленных данных
+  workflow_dispatch:        # Ручной запуск
 
 jobs:
   run-checker:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Чтение репозитория (Checkout)
+
+      # ============================================================
+      # 1. Checkout репозитория аккаунта №1
+      # ============================================================
+      - name: Чтение репозитория
         uses: actions/checkout@v4
 
+      # ============================================================
+      # 2. Настройка Python
+      # ============================================================
       - name: Настройка Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
+      # ============================================================
+      # 3. Установка зависимостей
+      # ============================================================
       - name: Установка зависимостей
         run: |
           python -m pip install --upgrade pip
           pip install requests pyyaml pysocks
 
-      - name: Скачивание и распаковка Xray Core (v26.3.27)
+      # ============================================================
+      # 4. Скачивание Xray Core
+      # ============================================================
+      - name: Скачивание и распаковка Xray Core
         run: |
-          curl -L -o xray.zip "https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip"
+          curl -L -o xray.zip \
+            "https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip"
+
           unzip -o xray.zip
           chmod +x xray
 
+      # ============================================================
+      # 5. Запуск парсера
+      # ============================================================
       - name: Запуск проверки прокси
-        run: python -u parsergithub.py
-
-      - name: Коммит и Пуш результатов в репозиторий
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          for f in good_proxies.txt sub.txt clash.yaml clash_top100.yaml top100.txt top100_sub.txt clash_top500.yaml top500_sub.txt top500.txt; do [ -f "$f" ] && git add "$f"; done
-          git diff --staged --quiet || (git commit -m "Auto-update proxies [skip ci]" && git push)
+          python -u parsergithub.py
+
+      # ============================================================
+      # 6. Клонирование репозитория аккаунта №2
+      # ============================================================
+      - name: Клонирование NomislouNodes
+        env:
+          DEST_REPO_TOKEN: ${{ secrets.DEST_REPO_TOKEN }}
+        run: |
+          git clone \
+            "https://x-access-token:${DEST_REPO_TOKEN}@github.com/Nomislou/NomislouNodes.git" \
+            destination
+
+      # ============================================================
+      # 7. Копирование файлов с прокси и подписками
+      # ============================================================
+      - name: Синхронизация результатов
+        run: |
+          files=(
+            "good_proxies.txt"
+            "sub.txt"
+            "clash.yaml"
+            "clash_top100.yaml"
+            "top100.txt"
+            "top100_sub.txt"
+            "clash_top500.yaml"
+            "top500_sub.txt"
+            "top500.txt"
+          )
+
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "Копирование: $file"
+              cp "$file" "destination/$file"
+            else
+              echo "Файл отсутствует: $file"
+            fi
+          done
+
+      # ============================================================
+      # 8. Commit и Push в NomislouNodes
+      # ============================================================
+      - name: Commit и Push результатов
+        working-directory: destination
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+          git add \
+            good_proxies.txt \
+            sub.txt \
+            clash.yaml \
+            clash_top100.yaml \
+            top100.txt \
+            top100_sub.txt \
+            clash_top500.yaml \
+            top500_sub.txt \
+            top500.txt
+
+          if git diff --staged --quiet; then
+            echo "Изменений нет. Push не требуется."
+          else
+            git commit -m "Auto-update proxy subscriptions"
+            git push
+          fi
