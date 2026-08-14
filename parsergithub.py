@@ -31,7 +31,7 @@ def fetch_keys_from_url(url):
         with requests.get(url, headers=headers, timeout=10) as response:
             response.raise_for_status()
             
-            # Защита: если сервер отдал HTML-страницу ошибки (например, 503 Varnish / Cloudflare)
+            # Защита: если сервер отдал HTML-страницу ошибки (503 Varnish / Cloudflare)
             text = response.text
             if "<html" in text.lower() or "<!doctype" in text.lower():
                 print(f" ⚠️ Источник {url} вернул HTML-страницу ошибки вместо ключей (пропущен)")
@@ -338,7 +338,7 @@ def build_emoji_tags(proxy_item):
     return f"{icons} " if icons else ""
 
 # ==========================================
-# 4. СТРОГАЯ СБОРКА CLASH META (БЕЗ ОШИБОК YAML)
+# 4. ИСПРАВЛЕННАЯ СБОРКА CLASH META
 # ==========================================
 
 def generate_clash_config(proxies_list, output_file="clash.yaml"):
@@ -351,9 +351,6 @@ def generate_clash_config(proxies_list, output_file="clash.yaml"):
     seen_names = set()
 
     for i, proxy in enumerate(sorted_proxies, 1):
-        if proxy.get('speed', 0) < 1.0:
-            continue
-
         flag = get_flag(proxy.get('code', ''))
         country = proxy.get('country', 'Unknown').replace(" ", "_")
         emoji_tags = build_emoji_tags(proxy)
@@ -439,7 +436,6 @@ def generate_clash_config(proxies_list, output_file="clash.yaml"):
     if not clash_proxies:
         return
 
-    # Вспомогательная функция безопасного кавычевания через json.dumps
     def esc(val):
         return json.dumps(str(val), ensure_ascii=False)
 
@@ -525,7 +521,7 @@ def generate_clash_config(proxies_list, output_file="clash.yaml"):
     lines.append("rules:")
     lines.append("  - DOMAIN-SUFFIX,local,DIRECT")
     lines.append("  - GEOIP,private,DIRECT")
-    lines.append('  - MATCH,"🚀 PROXY"')
+    lines.append("  - MATCH,🚀 PROXY")
 
     try:
         with open(output_file, 'w', encoding='utf-8') as f:
@@ -573,9 +569,7 @@ def main():
     parsed_items = [group[0] for group in host_port_groups.values()]
     print(f"🔍 Собрано уникальных ключей: {len(parsed_items_raw)}. Серверов: {len(parsed_items)}")
 
-    # ----------------------------------------------------
     # ЭТАП 1: Быстрая TCP/TLS проверка
-    # ----------------------------------------------------
     print("\n⚡ ЭТАП 1: Предварительная фильтрация серверов (TCP/TLS)...")
     alive_first_proxies = []
     total_fast = len(parsed_items)
@@ -605,9 +599,7 @@ def main():
     if not alive_proxies:
         return
 
-    # ----------------------------------------------------
     # ЭТАП 2: Быстрая проверка валидности протокола (204)
-    # ----------------------------------------------------
     print("\n🚀 ЭТАП 2: Быстрая проверка прокси через Xray (HTTP 204)...")
     alive_xray_proxies = []
     xray_tasks = [(p, 10800 + (i % 5000)) for i, p in enumerate(alive_proxies)]
@@ -634,9 +626,7 @@ def main():
         print("❌ Нет рабочих прокси после Этапа 2.")
         return
 
-    # ----------------------------------------------------
     # ЭТАП 3: Замер скорости, GeoIP, Telegram и Google
-    # ----------------------------------------------------
     print(f"\n💨 ЭТАП 3: Замер скорости и проверка сервисов для {len(alive_xray_proxies)} прокси...")
     final_working_proxies = []
     speed_tasks = [(p, 16000 + (i % 5000)) for i, p in enumerate(alive_xray_proxies)]
@@ -663,7 +653,7 @@ def main():
         return
 
     # ----------------------------------------------------
-    # 6. ЭЛИТНЫЙ ТОП-100 (top100.txt / top100_sub.txt / clash_top100.yaml)
+    # 6. ТОП-100 (БЕЗ ИЗМЕНЕНИЙ)
     # ----------------------------------------------------
     MIN_SPEED_TOP = 5.0
     MAX_PING_TOP = 450
