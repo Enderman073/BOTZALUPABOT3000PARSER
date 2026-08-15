@@ -229,8 +229,7 @@ def check_xray_alive(item, local_port):
         proxies = {"http": f"socks5://127.0.0.1:{local_port}", "https": f"socks5://127.0.0.1:{local_port}"}
 
         ping_start = time.time()
-        # ЖЕСТКИЙ ТАЙМАУТ: 1.8 секунды вместо 3.0
-        with requests.get("http://gstatic.com/generate_204", proxies=proxies, timeout=1.8) as ping_res:
+        with requests.get("http://gstatic.com/generate_204", proxies=proxies, timeout=3.0) as ping_res:
             if ping_res.status_code != 204:
                 return None
         
@@ -653,10 +652,10 @@ def main():
         return
 
     # ----------------------------------------------------
-    # 6.1. ТОП-100 (ЖЕСТКИЙ СНАЙПЕРСКИЙ ОТБОР)
+    # 6.1. ТОП-100 (ЭЛИТНЫЕ СЕРВЕРЫ)
     # ----------------------------------------------------
-    MIN_SPEED_TOP = 5.0  # Было 3.0
-    MAX_PING_TOP = 300   # Было 500
+    MIN_SPEED_TOP = 3.0
+    MAX_PING_TOP = 500
 
     prime_candidates = [
         p for p in final_working_proxies 
@@ -673,8 +672,7 @@ def main():
 
     for p in prime_candidates:
         server_id = p.get('real_ip') or p.get('host')
-        # СТРОГО 1 ключ на один IP
-        if seen_servers_top[server_id] < 1:
+        if seen_servers_top[server_id] < 2:
             top_100_list.append(p)
             seen_servers_top[server_id] += 1
         if len(top_100_list) == 100:
@@ -703,10 +701,10 @@ def main():
         print(f"\n💎 Отобрано {len(top_100_list)} ЭЛИТНЫХ прокси в 'top100_sub.txt' и 'clash_top100.yaml'")
 
     # ----------------------------------------------------
-    # 6.2. ТОП-500 (УЖЕСТОЧЕННЫЙ ТОП)
+    # 6.2. ТОП-500 (РАСШИРЕННЫЙ ТОП)
     # ----------------------------------------------------
-    MIN_SPEED_500 = 3.5  # Было 2.5
-    MAX_PING_500 = 450   # Было 700
+    MIN_SPEED_500 = 2.5
+    MAX_PING_500 = 700
 
     candidates_500 = [
         p for p in final_working_proxies 
@@ -723,8 +721,7 @@ def main():
 
     for p in candidates_500:
         server_id = p.get('real_ip') or p.get('host')
-        # Максимум 2 ключа на IP
-        if seen_servers_500[server_id] < 2:
+        if seen_servers_500[server_id] < 3:
             top_500_list.append(p)
             seen_servers_500[server_id] += 1
         if len(top_500_list) == 500:
@@ -755,7 +752,7 @@ def main():
     # ----------------------------------------------------
     # 7. ОСНОВНАЯ ЧИСТАЯ БАЗА
     # ----------------------------------------------------
-    MIN_SPEED_ALL = 2.5  # Было 2.0
+    MIN_SPEED_ALL = 2.0
     sorted_all = sorted(final_working_proxies, key=lambda x: x.get('speed', 0), reverse=True)
     
     unique_links = set()
@@ -769,8 +766,7 @@ def main():
         clean_url = p['key'].split('#')[0]
         server_id = p.get('real_ip') or p.get('host')
         
-        # Максимум 2 ключа на один IP
-        if clean_url not in unique_links and server_ip_count[server_id] < 2:
+        if clean_url not in unique_links and server_ip_count[server_id] < 3:
             unique_links.add(clean_url)
             server_ip_count[server_id] += 1
             clean_final_proxies.append(p)
